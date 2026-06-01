@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Static Payload Checkout Test</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; padding: 20px; max-width: 800px; margin: auto; }
+        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h2 { color: #333; margin-top: 0; }
+        input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; margin-bottom: 20px;}
+        button { width: 100%; padding: 15px; background: #007bff; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #999; cursor: not-allowed; }
+        pre { background: #1e1e1e; color: #00ff00; padding: 15px; border-radius: 6px; margin-top: 20px; overflow-x: auto; font-family: monospace; white-space: pre-wrap; font-size: 14px;}
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Real Checkout Flow (Static Payload)</h2>
+    <p style="color: #666; font-size: 14px;">This file specifically tests your actual backend APIs <code>/:userId</code> and <code>/verify</code> with the provided static "John Doe" payload.</p>
+    
+    <label><strong>Backend API URL:</strong></label>
+    <input type="text" id="apiUrl" value="http://localhost:14000/api/"> 
+
+    <!-- https://api.zunjarraoyatra.com/api/ -->
+     <!-- http://localhost:14000/api/ -->
+      <!-- http://13.63.162.51:14000/ -->
+    
+    <label><strong>Auth Token (Required for /verify API):</strong></label>
+    <input type="text" id="token" placeholder="Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+    
+    <button id="checkoutBtn">Run Checkout Flow</button>
+
+    <pre id="logs">Ready to test...</pre>
+</div>
+
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+    const logger = document.getElementById('logs');
+    function log(msg) {
+        logger.innerHTML += `\n[${new Date().toLocaleTimeString()}] ${msg}`;
+        logger.scrollTop = logger.scrollHeight;
+    }
+
+    const staticPayload = {
+        "customerInfo": {
+            "name": "John Doe",
+            "phone": "+918435837006",
+            "email": "sahujipriyanshu2112@gmail.com",
+            "specialRequests": "Need wheelchair accessible rooms and vegetarian meals"
+        },
+        "userId": "69bcf38ad9a4c371e2be1367",
+        // "packageId": "69c265a1fa308727a999a538",
+        "tourId": "69c263182ecccf94cac4f6e5",
+        "selectedAddOns": [
+            {
+                "name": "Extra Bed",
+                "price": 500,
+                "description": "Additional single bed in the room"
+            },
+            {
+                "name": "Airport Transfer",
+                "price": 1200,
+                "description": "Pickup and drop from the airport"
+            }
+        ],
+        "selectedSeats": ["2-L", "3-L", "4-L"],
+        "adults": 2,
+        "children": 1,
+        "checkInDate": "2026-03-30T00:00:00.000",   
+        "travelerDetailsMap": [
+            {
+                "name": "John Doe",
+                "age": 35,  
+                "gender": "Male",
+                "idProofType": "Passport",
+                "idProofNumber": "P1234567",
+                "specialNotes": "",
+                "isChild": false
+            },
+            {
+                "name": "Jane Doe",
+                "age": 32,
+                "gender": "Female",
+                "idProofType": "Passport",
+                "idProofNumber": "P7654321",
+                "specialNotes": "",
+                "isChild": false
+            },
+            {
+                "name": "Tommy Doe",
+                "age": 2,
+                "gender": "Male",
+                "idProofType": "Birth Certificate",
+                "idProofNumber": "BC123456",
+                "specialNotes": "Allergic to peanuts",
+                "isChild": true
+            }
+        ]
+    };
+
+    document.getElementById('checkoutBtn').addEventListener('click', async () => {
+        const btn = document.getElementById('checkoutBtn');
+        btn.disabled = true;
+        
+        try {
+            const apiUrl = document.getElementById('apiUrl').value.trim().replace(/\/+$/, "");
+            const token = document.getElementById('token').value.trim();
+            const userId = staticPayload.userId;
+
+            if (!token) {
+                alert("Please enter a valid Auth Token! The /verify route requires it.");
+                btn.disabled = false;
+                return;
+            }
+
+            log(`Calling POST /api/checkout/${userId} ...`);
+
+            const orderRes = await fetch(`${apiUrl}/checkout/${userId}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(staticPayload)
+            });
+            
+            const orderData = await orderRes.json();
+            
+            if (!orderRes.ok || !orderData.success) {
+                throw new Error("API responded with an error: " + JSON.stringify(orderData, null, 2));
+            }
+
+            log("✅ Order created successfully in Database!");
+            log("Razorpay Order ID: " + orderData.razorpayOrder.id);
+            log("Amount to pay: " + (orderData.razorpayOrder.amount / 100) + " INR");
+
+            openRazorpay(orderData, apiUrl, token);
+
+        } catch (error) {
+            log("❌ Error calling create order: " + error.message);
+            btn.disabled = false;
+        }
+    });
+
+    function openRazorpay(orderData, apiUrl, token) {
+        log("Opening Razorpay Payment UI...");
+
+        const options = {
+            key: orderData.razorpayKeyId,
+            amount: orderData.razorpayOrder.amount, // strict match to backend amount
+            currency: orderData.razorpayOrder.currency,
+            name: "Zunjarrao Yatra",
+            description: "Static Payload Test",
+            order_id: orderData.razorpayOrder.id,
+            handler: async function (response) {
+                log("Payment processed by Razorpay!");
+                log("Payment ID: " + response.razorpay_payment_id);
+                log("Calling POST /api/checkout/verify to verify signature & complete booking...");
+
+                try {
+                    const headers = { 
+                        "Content-Type": "application/json",
+                        "Authorization": token.startsWith("Bearer ") ? token : `Bearer ${token}`
+                    };
+
+                    const verifyRes = await fetch(`${apiUrl}/checkout/verify`, {
+                        method: "POST",
+                        headers: headers,
+                        body: JSON.stringify({
+                            razorpay_order_id: response.razorpay_order_id,
+                            razorpay_payment_id: response.razorpay_payment_id,
+                            razorpay_signature: response.razorpay_signature
+                        })
+                    });
+
+                    const verifyData = await verifyRes.json();
+                    if(verifyRes.ok && verifyData.success) {
+                        log("✅ Payment Verified & Booking Confirmed Successfully!");
+                        log("Server Response: " + JSON.stringify(verifyData, null, 2));
+                        
+                        // Check background tasks status if returned
+                        if(verifyData.emailResults) {
+                            log("Email/WhatsApp Tasks: " + JSON.stringify(verifyData.emailResults, null, 2));
+                        }
+                    } else {
+                        log("❌ Verification Failed: " + JSON.stringify(verifyData, null, 2));
+                    }
+                } catch(err) {
+                    log("❌ Error calling Verify API: " + err.message);
+                } finally {
+                    document.getElementById('checkoutBtn').disabled = false;
+                }
+            },
+            prefill: {
+                name: staticPayload.customerInfo.name,
+                email: staticPayload.customerInfo.email,
+                contact: staticPayload.customerInfo.phone
+            },
+            theme: { color: "#3399cc" },
+            modal: {
+                ondismiss: function() {
+                    log("❌ Payment popup closed by user.");
+                    document.getElementById('checkoutBtn').disabled = false;
+                }
+            }
+        };
+
+        const rzp1 = new Razorpay(options);
+        rzp1.on('payment.failed', function (response){
+            log("❌ Payment Failed.");
+            log("Reason: " + response.error.description);
+            document.getElementById('checkoutBtn').disabled = false;
+        });
+        
+        rzp1.open();
+    }
+</script>
+
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- 
+
+
+
+
+curl -X POST "https://api.msg91.com/api/sendhttp.php" \
+  -H "Content-Type: application/json" \
+  -H "authkey: 441431AI59GlvFlw69aaa86dP1" \
+  -d '{
+    "template_id": "1107177339794725613",
+    "recipients": [{"mobiles": "918435837006"}]
+  }'
+ -->
+
+
+
+
+
+
+
+
+
+

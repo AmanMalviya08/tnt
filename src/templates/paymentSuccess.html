@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Successful</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 600px;
+            margin: 20px auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background-color: #27ae60;
+            color: #ffffff;
+            padding: 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .content {
+            padding: 30px;
+        }
+        .success-icon {
+            text-align: center;
+            font-size: 48px;
+            color: #27ae60;
+            margin-bottom: 20px;
+        }
+        .details-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        .details-table th {
+            text-align: left;
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            color: #666;
+        }
+        .details-table td {
+            text-align: right;
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            font-weight: bold;
+        }
+        .btn {
+            display: inline-block;
+            background-color: #27ae60;
+            color: #ffffff;
+            text-decoration: none;
+            padding: 12px 25px;
+            border-radius: 5px;
+            font-weight: bold;
+            margin-top: 20px;
+            text-align: center;
+        }
+        .btn:hover {
+            background-color: #219150;
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+        }
+        .center {
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Payment Confirmation</h1>
+        </div>
+        <div class="content">
+            <div class="success-icon">✓</div>
+            <h2 style="text-align: center; margin-top: 0;">Thank You!</h2>
+            <p style="text-align: center;">Your payment has been successfully processed. Your booking is now confirmed.</p>
+            
+            <table class="details-table">
+                <tr>
+                    <th>Customer Name</th>
+                    <td>{{customerName}}</td>
+                </tr>
+                <tr>
+                    <th>Booking ID</th>
+                    <td>{{bookingId}}</td>
+                </tr>
+                <tr>
+                    <th>Transaction ID</th>
+                    <td>{{transactionId}}</td>
+                </tr>
+                <tr>
+                    <th>Date</th>
+                    <td>{{date}}</td>
+                </tr>
+                <tr>
+                    <th>Amount Paid</th>
+                    <td>₹{{amount}}</td>
+                </tr>
+            </table>
+
+            <div class="center">
+                <p>Please find your invoice details below or download it using the button.</p>
+                <a href="{{invoiceUrl}}" class="btn">Download Invoice</a>
+            </div>
+        </div>
+        <div class="footer">
+            <p>If you have any questions, please contact our support team.</p>
+            <p>&copy; 2024 Tour and Travel. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>

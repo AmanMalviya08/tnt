@@ -1,0 +1,932 @@
+<!-- <!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Invoice - {{invoiceNumber}}</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 0;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        -webkit-print-color-adjust: exact;
+      }
+
+      body {
+        width: 210mm;
+        min-height: 297mm;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        color: #333;
+        line-height: 1.5;
+        background: #fff;
+        font-size: 14px;
+      }
+
+      .invoice-container {
+        padding: 40px;
+        max-width: 210mm;
+        margin: 0 auto;
+      }
+
+      /* Header */
+      .header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 40px;
+        border-bottom: 2px solid #f0f0f0;
+        padding-bottom: 20px;
+      }
+
+      .company-details h1 {
+        color: #2c3e50;
+        font-size: 28px;
+        margin-bottom: 5px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      .company-details p {
+        color: #7f8c8d;
+        font-size: 12px;
+        margin-bottom: 2px;
+      }
+
+      .invoice-title {
+        text-align: right;
+      }
+
+      .invoice-title h2 {
+        font-size: 36px;
+        color: #bdc3c7;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+        font-weight: 300;
+      }
+
+      .invoice-meta {
+        text-align: right;
+      }
+
+      .meta-row {
+        margin-bottom: 5px;
+      }
+
+      .meta-label {
+        font-weight: bold;
+        color: #7f8c8d;
+        margin-right: 10px;
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      .meta-value {
+        font-weight: 600;
+        color: #2c3e50;
+      }
+
+      /* Status Badge */
+      .status-badge {
+        display: inline-block;
+        padding: 5px 10px;
+        border-radius: 4px;
+        color: white;
+        font-weight: bold;
+        font-size: 12px;
+        text-transform: uppercase;
+        margin-top: 10px;
+      }
+
+      /* Addresses */
+      .addresses {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 40px;
+      }
+
+      .address-box {
+        width: 48%;
+      }
+
+      .address-title {
+        font-size: 12px;
+        font-weight: bold;
+        color: #95a5a6;
+        text-transform: uppercase;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 5px;
+        margin-bottom: 10px;
+      }
+
+      .client-name {
+        font-size: 18px;
+        font-weight: bold;
+        color: #2c3e50;
+        margin-bottom: 5px;
+      }
+
+      .client-detail {
+        color: #555;
+        font-size: 13px;
+        margin-bottom: 3px;
+      }
+
+      /* Trip Details */
+      .trip-summary {
+        background-color: #f9f9f9;
+        border-radius: 6px;
+        padding: 20px;
+        margin-bottom: 30px;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 15px;
+      }
+
+      .trip-info-item h4 {
+        font-size: 11px;
+        color: #95a5a6;
+        text-transform: uppercase;
+        margin-bottom: 5px;
+      }
+
+      .trip-info-item p {
+        font-weight: 600;
+        color: #34495e;
+        font-size: 14px;
+      }
+
+      /* Tables */
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 30px;
+      }
+
+      th {
+        background-color: #2c3e50;
+        color: white;
+        text-align: left;
+        padding: 12px 15px;
+        font-size: 12px;
+        text-transform: uppercase;
+        font-weight: 600;
+      }
+
+      td {
+        padding: 12px 15px;
+        border-bottom: 1px solid #eee;
+        color: #555;
+      }
+
+      tr:last-child td {
+        border-bottom: none;
+      }
+
+      .text-right {
+        text-align: right;
+      }
+
+      .text-center {
+        text-align: center;
+      }
+
+      /* Totals */
+      .totals-section {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 40px;
+      }
+
+      .totals-box {
+        width: 300px;
+      }
+
+      .total-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid #eee;
+      }
+
+      .total-row:last-child {
+        border-bottom: none;
+        border-top: 2px solid #2c3e50;
+        padding-top: 15px;
+        margin-top: 5px;
+      }
+
+      .total-label {
+        color: #7f8c8d;
+        font-weight: 600;
+      }
+
+      .total-value {
+        font-weight: bold;
+        color: #2c3e50;
+      }
+
+      .grand-total {
+        font-size: 18px;
+        color: #2c3e50;
+      }
+
+      /* Footer */
+      .footer {
+        margin-top: 50px;
+        padding-top: 20px;
+        border-top: 1px solid #eee;
+        text-align: center;
+        color: #95a5a6;
+        font-size: 12px;
+      }
+
+      .footer p {
+        margin-bottom: 5px;
+      }
+
+      .terms {
+        margin-top: 30px;
+        font-size: 11px;
+        color: #7f8c8d;
+        text-align: left;
+      }
+
+      .terms h4 {
+        margin-bottom: 5px;
+        color: #2c3e50;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="invoice-container">
+      <div class="header">
+        <div class="company-details">
+          <h1>TOUR & TRAVELS</h1>
+          <p>Your Journey, Our Passion</p>
+          <p>123 Travel Lane, Adventure City, AC 56789</p>
+          <p>contact@yourtravels.com | +91-9876543210</p>
+        </div>
+        <div class="invoice-title">
+          <h2>INVOICE</h2>
+          <div class="invoice-meta">
+            <div class="meta-row">
+              <span class="meta-label">Invoice #</span>
+              <span class="meta-value">{{invoiceNumber}}</span>
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">Date</span>
+              <span class="meta-value">{{invoiceDate}}</span>
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">Booking ID</span>
+              <span class="meta-value">{{bookingId}}</span>
+            </div>
+            {{statusBadgeHTML}}
+          </div>
+        </div>
+      </div>
+
+      <div class="addresses">
+        <div class="address-box">
+          <div class="address-title">Bill To</div>
+          <div class="client-name">{{customerName}}</div>
+          <div class="client-detail">{{email}}</div>
+          <div class="client-detail">{{mobileNumber}}</div>
+          <div class="client-detail">{{userType}}</div>
+        </div>
+        <div class="address-box">
+          <div class="address-title">Payment Details</div>
+          <div class="client-detail">
+            <strong>Method:</strong> {{paymentMethod}}
+          </div>
+          <div class="client-detail">
+            <strong>Transaction ID:</strong> {{transactionId}}
+          </div>
+        </div>
+      </div>
+
+      <div class="trip-summary">
+        <div class="trip-info-item">
+          <h4>Trip Type</h4>
+          <p>{{bookingType}}</p>
+        </div>
+        <div class="trip-info-item">
+          <h4>Travel Dates</h4>
+          <p>{{travelStartDate}} - {{travelEndDate}}</p>
+        </div>
+        <div class="trip-info-item">
+          <h4>Duration</h4>
+          <p>{{durationInDays}} Days</p>
+        </div>
+        <div class="trip-info-item">
+          <h4>Travelers</h4>
+          <p>{{numberOfTravelers}} Person(s)</p>
+        </div>
+      </div>
+
+      {{#if travelerDetails}}
+      <div style="margin-bottom: 30px">
+        <div class="address-title">Traveler Details</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 50px">#</th>
+              <th>Name</th>
+              <th>Age</th>
+              <th>Gender</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{travelerRows}}
+          </tbody>
+        </table>
+      </div>
+      {{/if}}
+
+      <div class="address-title">Charges Breakdown</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Description</th>
+            <th class="text-center">Quantity</th>
+            <th class="text-right">Unit Price</th>
+            <th class="text-right">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Adult</td>
+            <td class="text-center">{{adultCount}}</td>
+            <td class="text-right">₹{{adultPrice}}</td>
+            <td class="text-right">₹{{adultTotal}}</td>
+          </tr>
+          <tr>
+            <td>Child</td>
+            <td class="text-center">{{childCount}}</td>
+            <td class="text-right">₹{{childPrice}}</td>
+            <td class="text-right">₹{{childTotal}}</td>
+          </tr>
+          {{#if addOns}}
+          <tr>
+            <td>Add-ons</td>
+            <td class="text-center">-</td>
+            <td class="text-right">-</td>
+            <td class="text-right">₹{{addOnsTotal}}</td>
+          </tr>
+          {{/if}}
+        </tbody>
+      </table>
+
+      <div class="totals-section">
+        <div class="totals-box">
+          <div class="total-row">
+            <span class="total-label">Subtotal</span>
+            <span class="total-value">₹{{totalAmount}}</span>
+          </div>
+          {{#if hasDiscount}}
+          <div class="total-row">
+            <span class="total-label">Discount</span>
+            <span class="total-value" style="color: #27ae60"
+              >-₹{{discountAmount}}</span
+            >
+          </div>
+          {{/if}}
+          <div class="total-row">
+            <span class="total-label grand-total">Total Due</span>
+            <span class="total-value grand-total">₹{{finalAmount}}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="terms">
+        <h4>Terms & Conditions</h4>
+        <p>
+          1. Payment is due upon receipt of this invoice unless otherwise
+          agreed.
+        </p>
+        <p>2. Please quote invoice number when remitting funds.</p>
+        <p>
+          3. This is a computer generated invoice and does not require a
+          signature.
+        </p>
+      </div>
+
+      <div class="footer">
+        <p>Thank you for your business!</p>
+        <p>Generated on {{generatedDate}}</p>
+      </div>
+    </div>
+  </body>
+</html> -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Invoice - {{invoiceNumber}}</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+<style>
+
+:root {
+--saffron:#F7941D;
+--deep:#1A1A2E;
+--border:#e8e8e8;
+--muted:#7f8c8d;
+--light:#fafafa;
+}
+
+*{margin:0;padding:0;box-sizing:border-box;}
+
+body{
+font-family:'DM Sans',sans-serif;
+background:#f0f2f5;
+padding:30px 20px;
+}
+
+.invoice-wrapper{
+max-width:860px;
+margin:auto;
+background:white;
+border-radius:16px;
+overflow:hidden;
+box-shadow:0 20px 60px rgba(0,0,0,0.12);
+}
+
+.invoice-header{
+background:var(--deep);
+padding:36px 44px;
+display:flex;
+justify-content:space-between;
+align-items:center;
+}
+
+.brand-name{
+font-family:'Playfair Display',serif;
+font-size:26px;
+font-weight:900;
+color:white;
+}
+
+.brand-sub{
+font-size:11px;
+letter-spacing:3px;
+color:var(--saffron);
+text-transform:uppercase;
+}
+
+.invoice-label{
+font-family:'Playfair Display',serif;
+font-size:40px;
+color:var(--saffron);
+font-weight:900;
+}
+
+.invoice-details td{
+font-size:12px;
+padding:3px 0 3px 12px;
+color:#ddd;
+}
+
+.invoice-details strong{
+color:white;
+}
+
+.status-bar{
+background:#FFF5E6;
+border-bottom:2px solid var(--saffron);
+padding:12px 44px;
+display:flex;
+align-items:center;
+gap:10px;
+}
+
+.invoice-body{
+padding:36px 44px;
+}
+
+.info-grid{
+display:grid;
+grid-template-columns:1fr 1fr;
+gap:24px;
+margin-bottom:32px;
+}
+
+.info-card{
+background:#fafafa;
+border:1px solid var(--border);
+border-radius:12px;
+padding:20px;
+}
+
+.info-card-title{
+font-size:10px;
+text-transform:uppercase;
+color:var(--saffron);
+margin-bottom:12px;
+}
+
+.info-row{
+display:flex;
+justify-content:space-between;
+font-size:13px;
+margin-bottom:6px;
+}
+
+.section-heading{
+font-size:11px;
+text-transform:uppercase;
+letter-spacing:2px;
+color:var(--saffron);
+margin-bottom:14px;
+}
+
+.tour-summary-card{
+background:linear-gradient(135deg,#1A1A2E,#0f3460);
+border-radius:12px;
+padding:24px;
+color:white;
+display:flex;
+justify-content:space-between;
+margin-bottom:28px;
+}
+
+.tour-name{
+font-family:'Playfair Display',serif;
+font-size:22px;
+}
+
+.tour-route{
+font-size:13px;
+opacity:.7;
+margin-top:6px;
+}
+
+.tour-tags{
+margin-top:10px;
+display:flex;
+gap:8px;
+flex-wrap:wrap;
+}
+
+.tour-tag{
+border:1px solid rgba(255,255,255,.3);
+padding:3px 10px;
+border-radius:20px;
+font-size:11px;
+}
+
+table{
+width:100%;
+border-collapse:collapse;
+margin-bottom:28px;
+}
+
+thead{
+background:var(--deep);
+color:white;
+
+}
+
+th{
+padding:12px;
+font-size:11px;
+text-transform:uppercase;
+text-align: left;
+}
+
+td{
+padding:13px;
+border-bottom:1px solid var(--border);
+font-size:13px;
+text-align: left;
+}
+
+td:last-child{
+text-align:right;
+}
+
+th.text-center, td.text-center { text-align: center; }
+th.text-right, td.text-right { text-align: right; }
+th.text-left, td.text-left { text-align: left; }
+
+.totals-section{
+display:flex;
+justify-content:flex-end;
+}
+
+.totals-box{
+width:320px;
+border:1px solid var(--border);
+border-radius:12px;
+overflow:hidden;
+}
+
+.totals-row{
+display:flex;
+justify-content:space-between;
+padding:11px 20px;
+border-bottom:1px solid var(--border);
+font-size:13px;
+}
+
+.totals-row.grand{
+background:var(--saffron);
+font-weight:700;
+font-size:18px;
+}
+
+.invoice-footer{
+background:var(--deep);
+padding:20px 44px;
+display:flex;
+justify-content:space-between;
+color:#bbb;
+font-size:12px;
+}
+
+.invoice-footer strong{
+color:var(--saffron);
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="invoice-wrapper">
+
+<div class="invoice-header">
+
+<div>
+<div class="brand-name">Zunjarrao Yatra</div>
+<div class="brand-sub">Tour & Travel Services</div>
+</div>
+
+<div class="invoice-meta">
+<div class="invoice-label">INVOICE</div>
+
+<table class="invoice-details">
+
+<tr>
+<td>Invoice No.</td>
+<td><strong>{{invoiceNumber}}</strong></td>
+</tr>
+
+<tr>
+<td>Invoice Date</td>
+<td><strong>{{invoiceDate}}</strong></td>
+</tr>
+
+<tr>
+<td>Booking ID</td>
+<td><strong>{{bookingId}}</strong></td>
+</tr>
+
+</table>
+
+</div>
+
+</div>
+
+<!-- STATUS -->
+<div class="status-bar">
+<span>Payment Status:</span>
+{{statusBadgeHTML}}
+</div>
+
+<!-- BODY -->
+<div class="invoice-body">
+
+<!-- TRAVELLER + BOOKING -->
+
+<div class="info-grid">
+
+<div class="info-card">
+
+<div class="info-card-title">Traveller Details</div>
+
+<div class="info-row">
+<span>Full Name</span>
+<span>{{customerName}}</span>
+</div>
+
+<div class="info-row">
+<span>Email</span>
+<span>{{email}}</span>
+</div>
+
+<div class="info-row">
+<span>Contact No.</span>
+<span>{{mobileNumber}}</span>
+</div>
+
+<!-- <div class="info-row">
+<span>User Type</span>
+<span>{{userType}}</span>
+</div> -->
+
+</div>
+
+<div class="info-card">
+
+<div class="info-card-title">Booking Details</div>
+
+<div class="info-row">
+<span>Booking ID</span>
+<span>{{bookingId}}</span>
+</div>
+
+<div class="info-row">
+<span>Booking Date</span>
+<span>{{invoiceDate}}</span>
+</div>
+
+<div class="info-row">
+<span>{{bookingType}}</span>
+<span>{{bookingName}}</span>
+</div>
+
+<div class="info-row">
+<span>Payment Method</span>
+<span>{{paymentMethod}}</span>
+</div>
+
+</div>
+
+</div>
+
+<!-- TOUR SUMMARY -->
+
+<div class="section-heading">Tour Information</div>
+
+<div class="tour-summary-card">
+
+<div>
+
+<div class="tour-name">{{bookingName}}</div>
+
+{{#if showTravelDates}}
+<div class="tour-route">
+{{travelStartDate}} → {{travelEndDate}}
+</div>
+{{/if}}
+
+<div class="tour-tags">
+
+  {{#if durationInDays}}
+<span class="tour-tag">{{durationInDays}} Days</span>
+{{/if}}
+{{#if durationInNight}}
+<span class="tour-tag">{{durationInNight}} Nights</span>
+{{/if}}
+
+<span class="tour-tag">{{numberOfTravelers}} Travelers</span>
+
+</div>
+
+</div>
+
+</div>
+
+<!-- TRAVELERS -->
+
+{{#if travelerDetails}}
+
+<div class="section-heading">Traveller Breakdown</div>
+
+<table>
+
+<thead>
+<tr>
+<th style="width: 50px;" class="text-center">#</th>
+<th class="text-left">Traveller Name</th>
+<th class="text-center">Age</th>
+<th class="text-right">Gender</th>
+</tr>
+</thead>
+
+<tbody>
+
+{{travelerRows}}
+
+</tbody>
+
+</table>
+
+{{/if}}
+
+<!-- CHARGES -->
+
+<div class="section-heading">Charges Breakdown</div>
+
+<table>
+
+<thead>
+<tr>
+<th class="text-left">Description</th>
+<th class="text-center">Qty</th>
+<th class="text-right">Price</th>
+<th class="text-right">Total</th>
+</tr>
+</thead>
+
+<tbody>
+
+<tr>
+<td class="text-left">{{adultLabel}}</td>
+<td class="text-center">{{adultCount}}</td>
+<td class="text-right">₹{{adultPrice}}</td>
+<td class="text-right">₹{{adultTotal}}</td>
+</tr>
+
+
+{{#if hasChild}}
+<tr>
+<td class="text-left">Child</td>
+<td class="text-center">{{childCount}}</td>
+<td class="text-right">₹{{childPrice}}</td>
+<td class="text-right">₹{{childTotal}}</td>
+</tr>
+{{/if}}
+
+{{#if addOns}}
+
+<tr>
+<td class="text-left">Add-ons</td>
+<td class="text-center">-</td>
+<td class="text-right">-</td>
+<td class="text-right">₹{{addOnsTotal}}</td>
+</tr>
+
+{{/if}}
+
+</tbody>
+
+</table>
+
+<!-- TOTAL -->
+
+<div class="totals-section">
+
+<div class="totals-box">
+
+<div class="totals-row">
+<span>Subtotal</span>
+<span>₹{{totalAmount}}</span>
+<span>{{taxPercent}}%</span>
+<span>₹{{taxAmount}}</span>
+</div>
+
+{{#if hasDiscount}}
+
+<div class="totals-row">
+<span>Discount</span>
+<span>-₹{{discountAmount}}</span>
+</div>
+
+{{/if}}
+
+<div class="totals-row grand">
+<span>Grand Total</span>
+<span>₹{{finalAmount}}</span>
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+<!-- FOOTER -->
+
+<div class="invoice-footer">
+
+<div>
+
+📞 +91 866 851 7783
+<br>
+✉ info@zunjarraoyta.com  
+<br>
+📍 Pune, Maharashtra
+
+</div>
+
+<div>
+
+Authorised Signatory  
+<strong>Zunjarrao Yatra</strong>
+
+</div>
+
+</div>
+
+</div>
+
+</body>
+</html>

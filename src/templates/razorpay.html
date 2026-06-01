@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Agent Payment</title>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</head>
+
+<body>
+
+    <h2>Agent Subscription Payment</h2>
+
+    <button id="payBtn">Pay Now</button>
+
+    <script>
+
+        const agentId = "69b3a2059ad7ff7e59281aa7"
+        const backendUrl = "http://localhost:14000/api/"
+
+        document.getElementById("payBtn").onclick = async function () {
+
+            // Step 1: Create order
+            const orderRes = await fetch(`${backendUrl}checkout/agent-pay-dynamic/${agentId}`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWIzYTBjYjlhZDdmZjdlNTkyODFhOTciLCJyb2xlIjoiRGlzdHJpYnV0b3IiLCJpYXQiOjE3NzMzNzk4NjZ9.o36Ze0zKJI7uRUkcowEOcevC2GbqB1F3PNojU9kCpOM"
+
+                },
+                body: JSON.stringify({ amount: 2000 })
+            })
+
+            const orderData = await orderRes.json()
+
+            if (!orderData.success) {
+                alert("Error: " + orderData.message)
+                return
+            }
+
+            const order = orderData.razorpayOrder
+
+            // Step 2: Open Razorpay checkout
+            const options = {
+
+                key: orderData.razorpayKeyId,
+
+                amount: order.amount,
+
+                currency: order.currency,
+
+                name: "Agent Subscription",
+
+                description: "Agent Paid Subscription",
+
+                order_id: order.id,
+
+                handler: async function (response) {
+
+                    // Step 3: Verify payment
+                    const verifyRes = await fetch(`${backendUrl}checkout/agent-pay-dynamic/verify`, {
+
+                        method: "POST",
+
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OWIzYTBjYjlhZDdmZjdlNTkyODFhOTciLCJyb2xlIjoiRGlzdHJpYnV0b3IiLCJpYXQiOjE3NzMzNzk4NjZ9.o36Ze0zKJI7uRUkcowEOcevC2GbqB1F3PNojU9kCpOM"
+                        },
+
+                        body: JSON.stringify({
+                            razorpay_order_id: response.razorpay_order_id,
+                            razorpay_payment_id: response.razorpay_payment_id,
+                            razorpay_signature: response.razorpay_signature,
+                            agentId: agentId
+                        })
+
+                    })
+
+                    const verifyData = await verifyRes.json()
+
+                    if (verifyData.success) {
+                        alert("Payment Successful")
+                    } else {
+                        alert("Payment Verification Failed")
+                    }
+
+                },
+
+                theme: {
+                    color: "#3399cc"
+                }
+
+            }
+
+            const rzp = new Razorpay(options)
+
+            rzp.open()
+
+        }
+
+    </script>
+
+</body>
+
+</html>

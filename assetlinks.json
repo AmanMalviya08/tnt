@@ -1,0 +1,15 @@
+[
+    {
+        "relation": [
+            "delegate_permission/common.handle_all_urls"
+        ],
+        "target": {
+            "namespace": "android_app",
+            "package_name": "com.deepakott",
+            "sha256_cert_fingerprints": [
+                "FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C",
+                "F6:06:DD:23:2C:F3:EA:8B:93:59:48:06:7B:E6:32:67:D0:32:7C:0F:AF:40:70:0C:67:BD:C1:E9:6F:13:2E:A8"
+            ]
+        }
+    }
+]

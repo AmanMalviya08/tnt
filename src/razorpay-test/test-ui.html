@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Razorpay Test Environment (Isolated)</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            max-width: 600px; 
+            margin: 40px auto; 
+            text-align: center; 
+            background-color: #f5f5f5;
+        }
+        .card { 
+            background-color: white;
+            padding: 30px; 
+            border-radius: 12px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
+        }
+        .header {
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 25px;
+            padding: 10px;
+            background-color: #fff3cd;
+            border-radius: 6px;
+            border: 1px solid #ffeeba;
+        }
+        .input-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+        button { 
+            background-color: #3399cc; 
+            color: white; 
+            padding: 12px 24px; 
+            border: none; 
+            border-radius: 6px; 
+            font-size: 16px; 
+            cursor: pointer; 
+            width: 100%;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        button:hover { 
+            background-color: #2b82ad; 
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #status { 
+            margin-top: 20px; 
+            font-weight: bold; 
+            padding: 10px;
+            border-radius: 6px;
+        }
+        .status-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status-info {
+            background-color: #cce5ff;
+            color: #004085;
+            border: 1px solid #b8daff;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2 class="header">Razorpay Test Environment</h2>
+        <div class="subtitle">
+            ⚠️ Isolated Testing: This mock environment uses memory storage. 
+            <strong>No data is saved to your main database.</strong>
+        </div>
+        
+        <div class="input-group">
+            <label for="amount">Payment Amount (INR): </label>
+            <input type="number" id="amount" value="100" min="1" />
+        </div>
+        
+        <button id="rzp-button">Pay with Razorpay</button>
+        <div id="status" style="display: none;"></div>
+    </div>
+
+    <!-- Razorpay Checkout Script -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <script>
+        document.getElementById('rzp-button').onclick = async function (e) {
+            e.preventDefault();
+            const statusDiv = document.getElementById('status');
+            const btn = document.getElementById('rzp-button');
+            const amount = document.getElementById('amount').value;
+            
+            statusDiv.style.display = "block";
+            statusDiv.className = "status-info";
+            statusDiv.innerText = "Creating order on server...";
+            btn.disabled = true;
+            
+            try {
+                // 1. Call custom server to create an order
+                const response = await fetch('/api/razorpay-test/create-order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ amount: parseInt(amount) })
+                });
+                const data = await response.json();
+
+                if (!data.success) {
+                    statusDiv.className = "status-error";
+                    statusDiv.innerText = "Failed to create order: " + (data.message || "Unknown error");
+                    btn.disabled = false;
+                    return;
+                }
+
+                // 2. Initialize Razorpay Checkout
+                const options = {
+                    key: data.key_id, 
+                    amount: data.order.amount,
+                    currency: data.order.currency,
+                    name: "Isolated Test Pay",
+                    description: "Stand-alone Test Transaction",
+                    order_id: data.order.id,
+                    handler: async function (response) {
+                        statusDiv.className = "status-info";
+                        statusDiv.innerText = "Verifying payment signature...";
+                        
+                        // 3. Call custom server to verify the payment
+                        const verifyRes = await fetch('/api/razorpay-test/verify', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                razorpay_payment_id: response.razorpay_payment_id,
+                                razorpay_order_id: response.razorpay_order_id,
+                                razorpay_signature: response.razorpay_signature
+                            })
+                        });
+                        const verifyData = await verifyRes.json();
+                        
+                        if (verifyData.success) {
+                            statusDiv.className = "status-success";
+                            statusDiv.innerHTML = "✅ Payment Successful & Verified!<br><small>Payment ID: " + response.razorpay_payment_id + "</small>";
+                        } else {
+                            statusDiv.className = "status-error";
+                            statusDiv.innerText = "❌ Verification Failed: " + verifyData.message;
+                        }
+                        btn.disabled = false;
+                    },
+                    prefill: {
+                        name: "Test User",
+                        email: "test.user@example.com",
+                        contact: "+919999999999"
+                    },
+                    theme: {
+                        color: "#3399cc"
+                    },
+                    modal: {
+                        ondismiss: function() {
+                            statusDiv.className = "status-error";
+                            statusDiv.innerText = "Payment cancelled by user.";
+                            btn.disabled = false;
+                        }
+                    }
+                };
+
+                const rzp1 = new Razorpay(options);
+                
+                rzp1.on('payment.failed', function (response){
+                    statusDiv.className = "status-error";
+                    statusDiv.innerText = "Payment Failed: " + response.error.description;
+                    btn.disabled = false;
+                });
+
+                rzp1.open();
+                statusDiv.innerText = "Waiting for payment completion in Razorpay...";
+                
+            } catch (err) {
+                console.error(err);
+                statusDiv.className = "status-error";
+                statusDiv.innerText = "Error: " + err.message;
+                btn.disabled = false;
+            }
+        };
+    </script>
+</body>
+</html>
