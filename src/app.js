@@ -38,6 +38,7 @@ const razorpayRoutes = require('./routes/razorpayRoutes')
 const galleryRoutes = require('./routes/galleryRoutes')
 const distributorRoutes = require('./routes/distributorRoutes');
 const razorpayTestRoutes = require('./razorpay-test/routes');
+const notificationRoutes = require('./routes/notificationRoutes');
 
 
 const app = express();
@@ -95,6 +96,7 @@ app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/wallet', require('./routes/walletRoutes'));
 app.use('/api/benefits', require('./routes/benefitRoutes'));
 app.use('/api/rewards', require('./routes/rewardRoutes'));
+app.use('/api/notifications', notificationRoutes);
 
 // app.get('/.well-known/assetlinks.json', async (req, res) => {
 //   try {

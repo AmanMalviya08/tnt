@@ -25,21 +25,27 @@ const Company = require("../models/companyModel");
 const { userModel } = require("../models/userModel");
 const { incrementBookingCount } = require("./rewardController");
 const { sendBookingSMS } = require("../utils/smsSendHelper");
+const {
+  isMockPaymentEnabled,
+  startOptionalSession,
+  commitOptionalSession,
+  abortOptionalSession,
+  saveOptions,
+  applySession,
+} = require("../utils/mongoSession");
+const {
+  mapToOrderPaymentMethod,
+  mapToBookingPaymentMethod,
+} = require("../utils/paymentMethodMapper");
 
 const invoiceService = new InvoiceService();
 const whatsappService = new WhatsAppService();
 
 const createBookingsFromCart = async (req, res) => {
   let session = null;
-  try {
-    session = await mongoose.startSession();
-    session.startTransaction();
-  } catch (e) {
-    session = null;
-    console.log("⚠️ MongoDB Standalone detected. Proceeding without transaction session.");
-  }
 
   try {
+    session = await startOptionalSession();
     const {
       travelerDetailsMap = [],
       customerInfo,
@@ -55,8 +61,7 @@ const createBookingsFromCart = async (req, res) => {
 
     // Validate ObjectIds before querying to prevent BSON/Cast Errors
     if (!mongoose.Types.ObjectId.isValid(userId)) {
-      await session.abortTransaction();
-      session.endSession();
+      await abortOptionalSession(session);
       return res.status(400).json({
         success: false,
         message: "Invalid User ID format",
@@ -64,8 +69,7 @@ const createBookingsFromCart = async (req, res) => {
     }
 
     if (packageId && !mongoose.Types.ObjectId.isValid(packageId)) {
-      await session.abortTransaction();
-      session.endSession();
+      await abortOptionalSession(session);
       return res.status(400).json({
         success: false,
         message: "Invalid Package ID format",
@@ -73,8 +77,7 @@ const createBookingsFromCart = async (req, res) => {
     }
 
     if (tourId && !mongoose.Types.ObjectId.isValid(tourId)) {
-      await session.abortTransaction();
-      session.endSession();
+      await abortOptionalSession(session);
       return res.status(400).json({
         success: false,
         message: "Invalid Tour ID format",
@@ -82,9 +85,10 @@ const createBookingsFromCart = async (req, res) => {
     }
 
     // Cancel previous pending orders
-    const previousPendingOrders = await orderModel
-      .find({ userId, orderStatus: "Pending" })
-      .session(session);
+    const previousPendingOrders = await applySession(
+      orderModel.find({ userId, orderStatus: "Pending" }),
+      session
+    );
 
     await Promise.all(
       previousPendingOrders.map(order =>
@@ -103,20 +107,23 @@ const createBookingsFromCart = async (req, res) => {
     ]);
 
     if (!packageData && !tourData) {
-      await session.abortTransaction();
-      session.endSession();
+      await abortOptionalSession(session);
+      const hasId = Boolean(packageId || tourId);
       return res.status(400).json({
         success: false,
-        message: "Either packageId or tourId is required",
+        message: hasId
+          ? "Package or tour not found for the given id"
+          : "Either packageId or tourId is required",
       });
     }
 
     // Fetch company + agent in parallel
     const [company, agent] = await Promise.all([
       Company.findOne(),
-      agentModel
-        .findOne({ userId: new mongoose.Types.ObjectId(userId) })
-        .session(session),
+      applySession(
+        agentModel.findOne({ userId: new mongoose.Types.ObjectId(userId) }),
+        session
+      ),
     ]);
 
     const companyGstNumber = company?.gstNumber || "";
@@ -227,7 +234,7 @@ const createBookingsFromCart = async (req, res) => {
       taxPercent: companyTaxPercent,
     });
 
-    await newBooking.save(session ? { session } : {});
+    await newBooking.save(saveOptions(session));
 
     const bookings = [newBooking];
 
@@ -249,9 +256,21 @@ const createBookingsFromCart = async (req, res) => {
       },
     };
 
-    const razorpayOrder = await razorpay.orders.create(
-      razorpayOrderOptions
-    );
+
+    // const razorpayOrder = await razorpay.orders.create(
+    //   razorpayOrderOptions
+    // );
+    // MOCK PAYMENT: skip live Razorpay when MOCK_PAYMENT=true or keys are missing
+    let razorpayOrder;
+    if (isMockPaymentEnabled()) {
+      razorpayOrder = {
+        id: `order_mock_${Date.now()}`,
+        amount: razorpayOrderOptions.amount,
+        currency: razorpayOrderOptions.currency,
+      };
+    } else {
+      razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
+    }
 
     const newOrder = new orderModel({
       userId,
@@ -260,18 +279,16 @@ const createBookingsFromCart = async (req, res) => {
       orderId: razorpayOrder.id,
     });
 
-    await newOrder.save(session ? { session } : {});
+    await newOrder.save(saveOptions(session));
 
     await bookingModel.updateMany(
       { bookingId: { $in: newOrder.bookingIds } },
       { orderId: newOrder.orderId },
-      session ? { session } : {}
+      saveOptions(session)
     );
 
-    if (session) {
-      await session.commitTransaction();
-      session.endSession();
-    }
+    await commitOptionalSession(session);
+    session = null;
 
     return res.status(201).json({
       success: true,
@@ -279,24 +296,23 @@ const createBookingsFromCart = async (req, res) => {
       orderId: newOrder.orderId,
       bookingIds: newOrder.bookingIds,
       totalAmount: newOrder.totalAmount,
+      mockPayment: isMockPaymentEnabled(),
       razorpayOrder: {
         id: razorpayOrder.id,
         amount: razorpayOrder.amount,
         currency: razorpayOrder.currency,
       },
-      razorpayKeyId: process.env.RAZORPAY_KEY_ID,
+      razorpayKeyId: isMockPaymentEnabled() ? null : process.env.RAZORPAY_KEY_ID,
     });
 
   } catch (error) {
-    if (session) {
-      await session.abortTransaction();
-      session.endSession();
-    }
+    await abortOptionalSession(session);
     console.error("Error creating bookings:", error);
 
     return res.status(500).json({
       success: false,
       message: "Failed to create bookings",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -805,18 +821,27 @@ const webhook = async (req, res) => {
 
 
 const confirmPayment = async (req, res) => {
-  const session = await mongoose.startSession();
+  let session = null;
   try {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
-    session.startTransaction();
-    const order = await orderModel
-      .findOne({ orderId: razorpay_order_id })
-      .session(session);
+    session = await startOptionalSession();
+    const {
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+      paymentMethod: clientPaymentMethod,
+    } = req.body;
+    const order = await applySession(
+      orderModel.findOne({ orderId: razorpay_order_id }),
+      session
+    );
 
     if (!order) {
-      console.log(`[confirmPayment] 3a. ERROR: Order NOT FOUND in DB!`);
-    } else {
-      console.log(`[confirmPayment] 3b. SUCCESS: Order found in DB.`);
+      await abortOptionalSession(session);
+      session = null;
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
     }
 
     const valid = verifyPayment(
@@ -826,20 +851,30 @@ const confirmPayment = async (req, res) => {
     );
 
     if (!valid) {
-      await session.abortTransaction();
-      session.endSession();
+      await abortOptionalSession(session);
+      session = null;
       return res.status(400).json({
         success: false,
         message: "Invalid payment signature",
       });
     }
+
+    const orderPaymentMethod = mapToOrderPaymentMethod(
+      clientPaymentMethod ||
+        (razorpay_payment_id?.startsWith("pay_mock_") ? "upi" : "online")
+    );
+    const bookingPaymentMethod = mapToBookingPaymentMethod(
+      clientPaymentMethod ||
+        (razorpay_payment_id?.startsWith("pay_mock_") ? "upi" : "online")
+    );
+
+    // MOCK PAYMENT: skip live Razorpay fetch (commented — use mock method in dev)
     // const payment = await razorpay.payments.fetch(razorpay_payment_id);
-    const payment = { method: "Mock UPI", amount: Math.round(order.totalAmount * 100) };
     order.orderStatus = "Paid";
     order.paymentStatus = "Completed";
     order.transactionId = razorpay_payment_id;
-    order.paymentMethod = payment.method;
-    await order.save({ session });
+    order.paymentMethod = orderPaymentMethod;
+    await order.save(saveOptions(session));
 
     // ── Update Bookings ───────────────────────────────────────
     await bookingModel.updateMany(
@@ -848,19 +883,23 @@ const confirmPayment = async (req, res) => {
         paymentStatus: "Paid",
         bookingStatus: "Confirmed",
         transactionId: razorpay_payment_id,
-        paymentMethod: payment.method,
+        paymentMethod: bookingPaymentMethod,
       },
-      { session }
+      saveOptions(session)
     );
 
-    const confirmedBookings = await bookingModel
-      .find({ bookingId: { $in: order.bookingIds } })
-      .session(session);
+    const confirmedBookings = await applySession(
+      bookingModel.find({ bookingId: { $in: order.bookingIds } }),
+      session
+    );
     // ── Mark Seats as Booked ──────────────────────────────────
     for (const booking of confirmedBookings) {
       if (!booking.selectedTourId || !booking.selectedSeats?.length) continue;
 
-      const tour = await tourModel.findById(booking.selectedTourId).session(session);
+      const tour = await applySession(
+        tourModel.findById(booking.selectedTourId),
+        session
+      );
       if (!tour) continue;
 
       if (!tour.bookedSeatNumbers) tour.bookedSeatNumbers = [];
@@ -881,8 +920,8 @@ const confirmPayment = async (req, res) => {
           tour.bookedSeatNumbers.push(seatNumber);
         }
       }
-
-      await tour.save({ session });
+      // await tour.save({ session });
+      await tour.save(saveOptions(session));
     }
     // ── Commission Logic ──────────────────────────────────────
     try {
@@ -891,20 +930,29 @@ const confirmPayment = async (req, res) => {
       for (const booking of confirmedBookings) {
         if (!booking.assignedAgent) continue;
 
-        const agent = await agentModel.findOne({ userId: booking.assignedAgent }).session(session);
+        // const agent = await agentModel.findOne({ userId: booking.assignedAgent }).session(session);    
+        const agent = await applySession(
+          agentModel.findOne({ userId: booking.assignedAgent }),
+          session
+        );
         if (!agent) continue;
 
         // Increment totalBookingsHandled
         await agentModel.findOneAndUpdate(
           { userId: booking.assignedAgent },
           { $inc: { totalBookingsHandled: 1 } },
-          { session }
+          // { session }
+          saveOptions(session)
         );
 
 
         let distributor = null;
         if (agent.createdBy) {
-          distributor = await userModel.findById(agent.createdBy).session(session);
+          // distributor = await userModel.findById(agent.createdBy).session(session);
+          distributor = await applySession(
+            userModel.findById(agent.createdBy),
+            session
+          );
         }
 
         let agentCommissionPercent = 0;
@@ -924,7 +972,8 @@ const confirmPayment = async (req, res) => {
             await agentModel.findOneAndUpdate(
               { userId: booking.assignedAgent },
               { $inc: { wallet: agentCommissionAmount } },
-              { session }
+              // { session }
+              saveOptions(session)
             );
             await Transaction.create([{
               userId: booking.assignedAgent,
@@ -935,7 +984,7 @@ const confirmPayment = async (req, res) => {
               description: `Commission for booking ${booking.bookingId}`,
               bookingId: booking._id,
               createdBy: booking.assignedAgent
-            }], { session });
+            }], saveOptions(session));
           }
         }
 
@@ -948,7 +997,7 @@ const confirmPayment = async (req, res) => {
               await userModel.findByIdAndUpdate(
                 distributor._id,
                 { $inc: { wallet: distributorCommissionAmount } },
-                { session }
+                saveOptions(session)
               );
               await Transaction.create([{
                 userId: distributor._id,
@@ -959,7 +1008,7 @@ const confirmPayment = async (req, res) => {
                 description: `Commission for booking ${booking.bookingId} (Agent: ${agent.firstName} ${agent.lastName})`,
                 bookingId: booking._id,
                 createdBy: distributor._id
-              }], { session });
+              }], saveOptions(session));
             }
           }
         }
@@ -979,8 +1028,8 @@ const confirmPayment = async (req, res) => {
       console.error("[confirmPayment] 11a. Reward error:", rewardError);
     }
 
-    await session.commitTransaction();
-    session.endSession();
+    await commitOptionalSession(session);
+    session = null;
 
     res.status(200).json({
       success: true,
@@ -1076,8 +1125,7 @@ const confirmPayment = async (req, res) => {
 
   } catch (error) {
     console.error("[confirmPayment] ❌ CATCH BLOCK ERROR:", error);
-    await session.abortTransaction();
-    session.endSession();
+    await abortOptionalSession(session);
     console.error("Error confirming payment:", error);
     res.status(500).json({
       success: false,

@@ -59,7 +59,8 @@ orderSchema.methods.cancelWithBookings = async function (session) {
   this.orderStatus = 'Cancelled';
   this.cancelledAt = new Date();
   this.cancellationReason = 'New order created';
-  await this.save({ session });
+  const sessionOpts = session ? { session } : {};
+  await this.save(sessionOpts);
 
   await bookingModel.updateMany(
     { bookingId: { $in: this.bookingIds } },
@@ -67,7 +68,7 @@ orderSchema.methods.cancelWithBookings = async function (session) {
       bookingStatus: 'Cancelled',
       notes: 'Cancelled due to new order creation'
     },
-    { session }
+    sessionOpts
   );
 };
 

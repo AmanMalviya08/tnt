@@ -176,7 +176,20 @@ const userSchema = new mongoose.Schema(
       type: String,
       trim: true
     },
-   
+    fcmTokens: {
+      type: [
+        {
+          token: { type: String, trim: true },
+          platform: { type: String, trim: true },
+          appVersion: { type: String, trim: true },
+          deviceId: { type: String, trim: true },
+          isActive: { type: Boolean, default: true },
+          lastUsedAt: { type: Date, default: Date.now }
+        }
+      ],
+      default: []
+    },
+
 
   },
   { timestamps: true }

@@ -16,11 +16,14 @@ const REQUIRED_BOOKINGS = 5;
 async function incrementBookingCount(agentUserId, session) {
     if (!agentUserId) return null;
 
+    const withSession = (query) => (session ? query.session(session) : query);
+    const saveOpts = session ? { session } : {};
+
     // Check if the agent has already claimed a reward in ANY cycle
-    const hasClaimed = await FreePackageReward.findOne({
+    const hasClaimed = await withSession(FreePackageReward.findOne({
         agentUserId,
         isClaimed: true,
-    }).session(session);
+    }));
 
     if (hasClaimed) {
         console.log(`Agent ${agentUserId} has already claimed their one-time free package.`);
@@ -28,10 +31,10 @@ async function incrementBookingCount(agentUserId, session) {
     }
 
     // Find the current active (unclaimed) cycle for this agent
-    let reward = await FreePackageReward.findOne({
+    let reward = await withSession(FreePackageReward.findOne({
         agentUserId,
         isClaimed: false,
-    }).session(session);
+    }));
 
     // If no active cycle exists, create one
     if (!reward) {
@@ -49,7 +52,7 @@ async function incrementBookingCount(agentUserId, session) {
         reward.isEligible = true;
     }
 
-    await reward.save({ session });
+    await reward.save(saveOpts);
     return reward;
 }
 
