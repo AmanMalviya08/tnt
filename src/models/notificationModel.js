@@ -7,6 +7,7 @@ const notificationTypes = [
   "reward",
   "tour",
   "system",
+  "yatra_loyalty",
 ];
 
 const notificationSchema = new mongoose.Schema(

@@ -14,7 +14,7 @@ const { bookingModel } = require("../models/bookingModel");
 
 const router = express.Router();
 
-router.post("/verify", protect, confirmPayment);
+router.post("/verify", protect, confirmPayment); // conform payment for user
 
 // Agent paid subscription (company fixed fee)
 router.post("/agent-pay/verify", protect, confirmAgentPayment);

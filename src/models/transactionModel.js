@@ -18,7 +18,7 @@ const transactionSchema = new mongoose.Schema(
         },
         category: {
             type: String,
-            enum: ["Commission", "Withdrawal", "Refund", "Transfer", "Subscription"],
+            enum: ["Commission", "Withdrawal", "Refund", "Transfer", "Subscription", "Guide Commission"],
             required: true,
         },
         status: {
@@ -59,6 +59,20 @@ const transactionSchema = new mongoose.Schema(
         distributorId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
+        },
+        guideId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Guide",
+        },
+        allocationId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "GuideAllocation",
+        },
+        commissionPercent: {
+            type: Number,
+        },
+        bookingAmount: {
+            type: Number,
         },
         isCreditMoney: {
             type: Boolean,

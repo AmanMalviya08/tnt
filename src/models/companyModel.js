@@ -16,6 +16,16 @@ const companySchema = new mongoose.Schema({
     companyTiming: { type: String, trim: true },
     agentCommission: { type: Number, trim: true, default: 5 },
     guideCommission: { type: Number, trim: true, default: 0 },
+    yatraLoyaltyDiscountType: {
+        type: String,
+        enum: ['flat', 'free'],
+        default: 'flat',
+    },
+    yatraLoyaltyDiscountValue: {
+        type: Number,
+        default: 50,
+        min: 0,
+    },
     gstNumber: { type: String, trim: true },
     tax: { type: Number, trim: true, default: 18 },
     agentPaidFee: { type: Number, default: 0 },

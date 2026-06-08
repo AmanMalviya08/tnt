@@ -472,6 +472,85 @@ body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height
       throw error;
     }
   }
+
+  async sendComplaintStatusEmail(to, complaint) {
+    try {
+      console.log("Preparing to send complaint status email to:", to);
+
+      const complainantName =
+        complaint.complainantId?.fullName ||
+        `${complaint.complainantId?.firstName || ""} ${complaint.complainantId?.lastName || ""}`.trim() ||
+        "Valued Customer";
+      const complaintId = complaint.complaintId || complaint._id;
+      const title = complaint.title || "-";
+      const status = complaint.status || "-";
+      const adminNotes = complaint.adminNotes || "No additional notes.";
+
+      let statusColor = "#f39c12";
+      if (status === "Resolved") statusColor = "#27ae60";
+      else if (status === "Rejected") statusColor = "#e74c3c";
+      else if (status === "In Review") statusColor = "#3498db";
+
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Complaint Status Update</title>
+<style>
+body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }
+.container { max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); overflow: hidden; }
+.header { background-color: #34495e; color: #ffffff; padding: 20px; text-align: center; }
+.header h1 { margin: 0; font-size: 24px; }
+.content { padding: 30px; }
+.status-badge { display: inline-block; padding: 8px 16px; border-radius: 20px; color: #fff; font-weight: bold; font-size: 16px; }
+.details-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+.details-table th { text-align: left; padding: 10px; border-bottom: 1px solid #ddd; color: #666; }
+.details-table td { text-align: right; padding: 10px; border-bottom: 1px solid #ddd; font-weight: bold; }
+.footer { background-color: #f8f9fa; padding: 20px; text-align: center; font-size: 12px; color: #666; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>Complaint Status Update</h1>
+  </div>
+  <div class="content">
+    <p>Hi ${complainantName},</p>
+    <p>Your complaint has been updated. Here are the details:</p>
+    <table class="details-table">
+      <tr><th>Complaint ID</th><td>${complaintId}</td></tr>
+      <tr><th>Title</th><td>${title}</td></tr>
+      <tr><th>Status</th><td><span class="status-badge" style="background-color: ${statusColor};">${status}</span></td></tr>
+      <tr><th>Admin Notes</th><td>${adminNotes}</td></tr>
+      <tr><th>Updated At</th><td>${new Date().toLocaleDateString("en-IN")}</td></tr>
+    </table>
+    <p>If you have any further questions, please contact our support team.</p>
+  </div>
+  <div class="footer">
+    <p>&copy; ${new Date().getFullYear()} Tour and Travel. All rights reserved.</p>
+  </div>
+</div>
+</body>
+</html>
+`;
+
+      const mailOptions = {
+        from: process.env.EMAIL_USER || process.env.SMARTCLINIC_EMAIL_USER,
+        to,
+        subject: `Complaint ${complaintId} - Status Updated to ${status}`,
+        html,
+      };
+
+      const info = await this.transporter.sendMail(mailOptions);
+      console.log("Complaint status email sent successfully:", info.response);
+      return info;
+    } catch (error) {
+      console.error("Error sending complaint status email:", error.message);
+      throw error;
+    }
+  }
 }
 
 module.exports = new EmailService();

@@ -27,3 +27,19 @@ Error: Browser was not found at the configured executablePath (/usr/bin/chromium
     at async InvoiceService.generatePDFBuffer (D:\tour_travles\api.zunjarraoyatra.com\src\services\invoiceService.js:82:17)
     at async InvoiceService.generateInvoice (D:\tour_travles\api.zunjarraoyatra.com\src\services\invoiceService.js:24:25)
     at async Immediate.<anonymous> (D:\tour_travles\api.zunjarraoyatra.com\src\controller\checkoutController.js:1079:26)
+[2026-06-06 17:08:26.346] [INFO] [generateInvoice] START | {"bookingId":"BK-MQ2A4UMS-SJGH2I","invoiceNumber":"INV-MQ2A4UNG-8LR987","startTime":"2026-06-06T11:38:26.345Z"}
+[2026-06-06 17:08:26.350] [INFO] [generateInvoice] Generating PDF buffer... | {"bookingId":"BK-MQ2A4UMS-SJGH2I"}
+[2026-06-06 17:08:26.351] [INFO] [generatePDFBuffer] START - Launching Puppeteer browser | {"bookingId":"BK-MQ2A4UMS-SJGH2I","startTime":"2026-06-06T11:38:26.351Z","chromiumPath":"/usr/bin/chromium-browser"}
+[2026-06-06 17:08:26.382] [INFO] [generatePDFBuffer] Launching browser... | {"bookingId":"BK-MQ2A4UMS-SJGH2I","elapsed":"31ms"}
+[2026-06-06 17:08:26.388] [ERROR] [generatePDFBuffer] END - FAILED | {"bookingId":"BK-MQ2A4UMS-SJGH2I","endTime":"2026-06-06T11:38:26.388Z","totalDuration":"37ms","error":"Browser was not found at the configured executablePath (/usr/bin/chromium-browser)"}
+Error: Browser was not found at the configured executablePath (/usr/bin/chromium-browser)
+    at ChromeLauncher.launch (D:\tour_travles\api.zunjarraoyatra.com\node_modules\puppeteer-core\lib\cjs\puppeteer\node\BrowserLauncher.js:90:19)
+    at async InvoiceService.generatePDFBuffer (D:\tour_travles\api.zunjarraoyatra.com\src\services\invoiceService.js:82:17)
+    at async InvoiceService.generateInvoice (D:\tour_travles\api.zunjarraoyatra.com\src\services\invoiceService.js:24:25)
+    at async generateInvoice (D:\tour_travles\api.zunjarraoyatra.com\src\controller\invoiceController.js:40:26)
+[2026-06-06 17:08:26.389] [ERROR] [generateInvoice] END - FAILED | {"bookingId":"BK-MQ2A4UMS-SJGH2I","endTime":"2026-06-06T11:38:26.389Z","totalDuration":"44ms","error":"Browser was not found at the configured executablePath (/usr/bin/chromium-browser)"}
+Error: Browser was not found at the configured executablePath (/usr/bin/chromium-browser)
+    at ChromeLauncher.launch (D:\tour_travles\api.zunjarraoyatra.com\node_modules\puppeteer-core\lib\cjs\puppeteer\node\BrowserLauncher.js:90:19)
+    at async InvoiceService.generatePDFBuffer (D:\tour_travles\api.zunjarraoyatra.com\src\services\invoiceService.js:82:17)
+    at async InvoiceService.generateInvoice (D:\tour_travles\api.zunjarraoyatra.com\src\services\invoiceService.js:24:25)
+    at async generateInvoice (D:\tour_travles\api.zunjarraoyatra.com\src\controller\invoiceController.js:40:26)

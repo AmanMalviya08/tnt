@@ -33,10 +33,6 @@ const {
   saveOptions,
   applySession,
 } = require("../utils/mongoSession");
-const {
-  mapToOrderPaymentMethod,
-  mapToBookingPaymentMethod,
-} = require("../utils/paymentMethodMapper");
 
 const invoiceService = new InvoiceService();
 const whatsappService = new WhatsAppService();
@@ -96,24 +92,60 @@ const createBookingsFromCart = async (req, res) => {
       )
     );
 
-    // Fetch package/tour in parallel
-    const [packageData, tourData] = await Promise.all([
-      packageId
-        ? packageModel.findById(new mongoose.Types.ObjectId(packageId))
-        : null,
-      tourId
-        ? tourModel.findById(new mongoose.Types.ObjectId(tourId))
-        : null,
-    ]);
+    const normalizedPackageId = packageId ? String(packageId).trim() : null;
+    const normalizedTourId = tourId ? String(tourId).trim() : null;
+
+    if (!normalizedPackageId && !normalizedTourId) {
+      await abortOptionalSession(session);
+      return res.status(400).json({
+        success: false,
+        message: "Either packageId or tourId is required",
+      });
+    }
+
+    // Fetch package/tour; if only one id sent, try the other collection (client may send wrong field)
+    let packageData = null;
+    let tourData = null;
+    let effectivePackageId = normalizedPackageId;
+    let effectiveTourId = normalizedTourId;
+
+    if (normalizedPackageId) {
+      packageData = await packageModel.findById(
+        new mongoose.Types.ObjectId(normalizedPackageId)
+      );
+    }
+    if (normalizedTourId) {
+      tourData = await tourModel.findById(
+        new mongoose.Types.ObjectId(normalizedTourId)
+      );
+    }
+
+    if (!packageData && !tourData && normalizedPackageId && !normalizedTourId) {
+      tourData = await tourModel.findById(
+        new mongoose.Types.ObjectId(normalizedPackageId)
+      );
+      if (tourData) {
+        effectiveTourId = normalizedPackageId;
+        effectivePackageId = null;
+      }
+    }
+    if (!packageData && !tourData && normalizedTourId && !normalizedPackageId) {
+      packageData = await packageModel.findById(
+        new mongoose.Types.ObjectId(normalizedTourId)
+      );
+      if (packageData) {
+        effectivePackageId = normalizedTourId;
+        effectiveTourId = null;
+      }
+    }
 
     if (!packageData && !tourData) {
       await abortOptionalSession(session);
-      const hasId = Boolean(packageId || tourId);
-      return res.status(400).json({
+      return res.status(404).json({
         success: false,
-        message: hasId
-          ? "Package or tour not found for the given id"
-          : "Either packageId or tourId is required",
+        message: "Package or tour not found for the given id",
+        packageId: normalizedPackageId,
+        tourId: normalizedTourId,
       });
     }
 
@@ -194,7 +226,7 @@ const createBookingsFromCart = async (req, res) => {
       finalTravelEndDate.getDate() + duration
     );
 
-    if (tourId && tourData) {
+    if (tourData) {
       finalTravelStartDate = tourData.startDate;
       finalTravelEndDate = tourData.endDate;
     }
@@ -206,10 +238,10 @@ const createBookingsFromCart = async (req, res) => {
       mobileNumber: customerInfo.phone,
       email: customerInfo.email,
       userType: "App User",
-      bookingType: tourId ? "Group Tour" : "Package Tour",
+      bookingType: tourData ? "Group Tour" : "Package Tour",
       selectedPackageId: packageData?._id,
-      selectedTourId: tourId
-        ? new mongoose.Types.ObjectId(tourId)
+      selectedTourId: tourData?._id
+        ? new mongoose.Types.ObjectId(String(tourData._id))
         : undefined,
       cityId,
       numberOfTravelers: totalTravelers,
@@ -256,10 +288,6 @@ const createBookingsFromCart = async (req, res) => {
       },
     };
 
-
-    // const razorpayOrder = await razorpay.orders.create(
-    //   razorpayOrderOptions
-    // );
     // MOCK PAYMENT: skip live Razorpay when MOCK_PAYMENT=true or keys are missing
     let razorpayOrder;
     if (isMockPaymentEnabled()) {
@@ -824,12 +852,7 @@ const confirmPayment = async (req, res) => {
   let session = null;
   try {
     session = await startOptionalSession();
-    const {
-      razorpay_order_id,
-      razorpay_payment_id,
-      razorpay_signature,
-      paymentMethod: clientPaymentMethod,
-    } = req.body;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
     const order = await applySession(
       orderModel.findOne({ orderId: razorpay_order_id }),
       session
@@ -859,21 +882,16 @@ const confirmPayment = async (req, res) => {
       });
     }
 
-    const orderPaymentMethod = mapToOrderPaymentMethod(
-      clientPaymentMethod ||
-        (razorpay_payment_id?.startsWith("pay_mock_") ? "upi" : "online")
-    );
-    const bookingPaymentMethod = mapToBookingPaymentMethod(
-      clientPaymentMethod ||
-        (razorpay_payment_id?.startsWith("pay_mock_") ? "upi" : "online")
-    );
-
     // MOCK PAYMENT: skip live Razorpay fetch (commented — use mock method in dev)
     // const payment = await razorpay.payments.fetch(razorpay_payment_id);
+    const payment = {
+      method: isMockPaymentEnabled() ? "Mock UPI" : "online",
+      amount: Math.round(order.totalAmount * 100),
+    };
     order.orderStatus = "Paid";
     order.paymentStatus = "Completed";
     order.transactionId = razorpay_payment_id;
-    order.paymentMethod = orderPaymentMethod;
+    order.paymentMethod = payment.method;
     await order.save(saveOptions(session));
 
     // ── Update Bookings ───────────────────────────────────────
@@ -883,7 +901,7 @@ const confirmPayment = async (req, res) => {
         paymentStatus: "Paid",
         bookingStatus: "Confirmed",
         transactionId: razorpay_payment_id,
-        paymentMethod: bookingPaymentMethod,
+        paymentMethod: payment.method,
       },
       saveOptions(session)
     );
@@ -920,7 +938,7 @@ const confirmPayment = async (req, res) => {
           tour.bookedSeatNumbers.push(seatNumber);
         }
       }
-      // await tour.save({ session });
+
       await tour.save(saveOptions(session));
     }
     // ── Commission Logic ──────────────────────────────────────
@@ -930,7 +948,6 @@ const confirmPayment = async (req, res) => {
       for (const booking of confirmedBookings) {
         if (!booking.assignedAgent) continue;
 
-        // const agent = await agentModel.findOne({ userId: booking.assignedAgent }).session(session);    
         const agent = await applySession(
           agentModel.findOne({ userId: booking.assignedAgent }),
           session
@@ -941,14 +958,12 @@ const confirmPayment = async (req, res) => {
         await agentModel.findOneAndUpdate(
           { userId: booking.assignedAgent },
           { $inc: { totalBookingsHandled: 1 } },
-          // { session }
           saveOptions(session)
         );
 
 
         let distributor = null;
         if (agent.createdBy) {
-          // distributor = await userModel.findById(agent.createdBy).session(session);
           distributor = await applySession(
             userModel.findById(agent.createdBy),
             session
@@ -972,7 +987,6 @@ const confirmPayment = async (req, res) => {
             await agentModel.findOneAndUpdate(
               { userId: booking.assignedAgent },
               { $inc: { wallet: agentCommissionAmount } },
-              // { session }
               saveOptions(session)
             );
             await Transaction.create([{

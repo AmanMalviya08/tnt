@@ -96,6 +96,9 @@ app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/wallet', require('./routes/walletRoutes'));
 app.use('/api/benefits', require('./routes/benefitRoutes'));
 app.use('/api/rewards', require('./routes/rewardRoutes'));
+app.use('/api/yatra-loyalty', require('./routes/yatraLoyaltyRoutes'));
+app.use('/api/complaints', require('./routes/complaintRoutes'));
+app.use('/api/guide-wallet', require('./routes/guideWalletRoutes'));
 app.use('/api/notifications', notificationRoutes);
 
 // app.get('/.well-known/assetlinks.json', async (req, res) => {
@@ -117,7 +120,10 @@ app.get('/', (req, res) => {
     success: true,
     message: 'Api is running on 14000 port'
   })
+  console.log('Api is running on 14000 port ....')
 })
+
+
 
 connectDB();
 

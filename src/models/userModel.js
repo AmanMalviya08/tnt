@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
-const userRoles = ["Admin", "SubAdmin", "Agent", "Traveler", "Guest", "Distributor"];
+const userRoles = ["Admin", "SubAdmin", "Agent", "Traveler", "Guest", "Distributor", "Guide"];
 const userStatuses = ["Active", "Inactive", "Pending"];
 const userPermissions = [
   "dashboard",
@@ -190,12 +190,29 @@ const userSchema = new mongoose.Schema(
       default: []
     },
 
+    // ── One-time 5th Group Yatra Loyalty Offer ──────────────────────────────
+    yatraLoyalty: {
+      completedGroupYatras: { type: Number, default: 0, min: 0 },
+      requiredYatras: { type: Number, default: 4, min: 1 },
+      isEligible: { type: Boolean, default: false },
+      discountClaimed: { type: Boolean, default: false },
+      claimedAt: { type: Date },
+      rewardBookingId: { type: mongoose.Schema.Types.ObjectId, ref: "Booking" },
+      appliedDiscountType: { type: String, enum: ["flat", "free"] },
+      appliedDiscountValue: { type: Number, min: 0 },
+    }
 
   },
   { timestamps: true }
 );
 userSchema.virtual('agents', {
   ref: 'Agent',
+  localField: '_id',
+  foreignField: 'userId',
+  justOne: true
+})
+userSchema.virtual('guides', {
+  ref: 'Guide',
   localField: '_id',
   foreignField: 'userId',
   justOne: true

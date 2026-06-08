@@ -34,6 +34,54 @@ router.get("/export-allocations/excel", protect, async (req, res) => {
   }
 });
 
+router.get("/my-allocations", protect, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { page, limit, sort, sortOrder, ...filters } = req.query;
+    const result = await guideAllocationController.getAllocationsByGuideUserId(userId, filters, {
+      page,
+      limit,
+      sort,
+      sortOrder,
+    });
+    res
+      .status(200)
+      .json({
+        success: true,
+        message: "Guide allocations fetched successfully",
+        data: result.data,
+        pagination: result.pagination,
+      });
+  } catch (error) {
+    const statusCode = error.message === "Guide profile not found for this user" ? 404 : 500;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+});
+
+router.get("/my-history", protect, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { page, limit, sort, sortOrder, ...filters } = req.query;
+    const result = await guideAllocationController.getGuideAllocationHistory(userId, filters, {
+      page,
+      limit,
+      sort,
+      sortOrder,
+    });
+    res
+      .status(200)
+      .json({
+        success: true,
+        message: "Guide allocation history fetched successfully",
+        data: result.data,
+        pagination: result.pagination,
+      });
+  } catch (error) {
+    const statusCode = error.message === "Guide profile not found for this user" ? 404 : 500;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+});
+
 router.get("/", protect, async (req, res) => {
   try {
     const { page, limit, sort,sortOrder, ...filters } = req.query;
@@ -100,6 +148,40 @@ router.post("/:id/transfer", protect, async (req, res) => {
       return res.status(404).json({ success: false, message: "Guide allocation not found" });
     }
     res.status(200).json({ success: true, message: "Guide transferred successfully", data: allocation });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.patch("/:id/itinerary/:dayNumber", protect, async (req, res) => {
+  try {
+    const allocation = await guideAllocationController.updateItineraryDay(
+      req.params.id,
+      req.params.dayNumber,
+      req.body
+    );
+    res.status(200).json({
+      success: true,
+      message: `Itinerary day ${req.params.dayNumber} updated successfully`,
+      data: allocation,
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.patch("/:id/status", protect, async (req, res) => {
+  try {
+    const allocation = await guideAllocationController.updateAllocationStatus(
+      req.params.id,
+      req.body,
+      req.user
+    );
+    res.status(200).json({
+      success: true,
+      message: "Allocation status updated successfully",
+      data: allocation,
+    });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }

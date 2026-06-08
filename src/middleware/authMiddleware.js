@@ -53,10 +53,29 @@ const routePermissions = [
 
     { path: '/api/guide-allocations/', method: 'POST', roles: ['Admin', 'SubAdmin'], exact: true },
     { path: '/api/guide-allocations/', method: 'GET', roles: ['Admin', 'SubAdmin'], exact: true },
-    { path: '/api/guide-allocations/:id', method: 'GET', roles: ['Admin', 'SubAdmin', "Agent"] },
+    { path: '/api/guide-allocations/my-allocations', method: 'GET', roles: ['Admin', 'SubAdmin', 'Guide'], exact: true },
+    { path: '/api/guide-allocations/:id', method: 'GET', roles: ['Admin', 'SubAdmin', "Agent","Guide"] },
     { path: '/api/guide-allocations/:id', method: 'PUT', roles: ['Admin', 'SubAdmin'] },
     { path: '/api/guide-allocations/:id', method: 'DELETE', roles: ['Admin', 'SubAdmin'] },
     { path: '/api/guide-allocations/:id/transfer', method: 'POST', roles: ['Admin', 'SubAdmin'] },
+    { path: '/api/guide-allocations/:id/status', method: 'PATCH', roles: ['Admin', 'SubAdmin', 'Guide'] },
+
+    //complaints
+    { path: '/api/complaints/', method: 'POST', roles: ['Admin', 'SubAdmin', 'Traveler', 'Agent', 'Guide'], exact: true },
+    { path: '/api/complaints/my-complaints', method: 'GET', roles: ['Admin', 'SubAdmin', 'Traveler', 'Agent', 'Guide'], exact: true },
+    { path: '/api/complaints/', method: 'GET', roles: ['Admin', 'SubAdmin'], exact: true },
+    { path: '/api/complaints/:id', method: 'GET', roles: ['Admin', 'SubAdmin', 'Traveler', 'Agent', 'Guide'] },
+    { path: '/api/complaints/:id/status', method: 'PATCH', roles: ['Admin', 'SubAdmin'] },
+    { path: '/api/complaints/:id', method: 'DELETE', roles: ['Admin', 'SubAdmin'] },
+
+    //guide wallet
+    { path: '/api/guide-wallet/my-wallet', method: 'GET', roles: ['Guide'], exact: true },
+    { path: '/api/guide-wallet/my-transactions', method: 'GET', roles: ['Guide'], exact: true },
+    { path: '/api/guide-wallet/my-withdrawals', method: 'GET', roles: ['Guide'], exact: true },
+    { path: '/api/guide-wallet/withdraw', method: 'POST', roles: ['Guide'], exact: true },
+    { path: '/api/guide-wallet/withdrawals', method: 'GET', roles: ['Admin', 'SubAdmin'], exact: true },
+    { path: '/api/guide-wallet/withdrawals/approve/:id', method: 'PUT', roles: ['Admin', 'SubAdmin'] },
+    { path: '/api/guide-wallet/withdrawals/reject/:id', method: 'PUT', roles: ['Admin', 'SubAdmin'] },
 
     //packages
 
@@ -102,17 +121,18 @@ const routePermissions = [
 
     //bookings
 
-    { path: '/api/bookings/', method: 'POST', roles: ['Admin', 'SubAdmin'], exact: true },
-    { path: '/api/bookings/', method: 'GET', roles: ['Admin', 'SubAdmin'], exact: true },
+    { path: '/api/bookings/', method: 'POST', roles: ['Admin', 'SubAdmin', 'Agent'], exact: true },
+    { path: '/api/bookings/', method: 'GET', roles: ['Admin', 'SubAdmin', 'Agent'], exact: true },
     { path: '/api/bookings/user', method: 'GET', roles: ['Admin', 'SubAdmin', 'Traveler', 'Agent'], exact: true },
-    { path: '/api/bookings/:id', method: 'PUT', roles: ['Admin', 'SubAdmin'] },
+    { path: '/api/bookings/:id', method: 'PUT', roles: ['Admin', 'SubAdmin', 'Agent'] },
     { path: '/api/bookings/:id', method: 'DELETE', roles: ['Admin', 'SubAdmin'] },
     { path: '/api/bookings/:id/disable', method: 'PATCH', roles: ['Admin', 'SubAdmin'] },
 
     //invoice
 
-    { path: '/api/invoices/generate/:bookingId', method: 'POST', roles: ['Admin', 'SubAdmin'] },
-    { path: '/api/invoices/regenerate/:bookingId', method: 'PUT', roles: ['Admin', 'SubAdmin'] },
+    { path: '/api/invoices/generate/:bookingId', method: 'POST', roles: ['Admin', 'SubAdmin', 'Agent'] },
+    { path: '/api/invoices/regenerate/:bookingId', method: 'PUT', roles: ['Admin', 'SubAdmin', 'Agent'] },
+    { path: '/api/invoices/send-whatsapp/:bookingId', method: 'POST', roles: ['Admin', 'SubAdmin', 'Agent'] },
 
     //admin analytics
     { path: '/api/admin/analytics', method: 'GET', roles: ['Admin', 'SubAdmin'], exact: true },

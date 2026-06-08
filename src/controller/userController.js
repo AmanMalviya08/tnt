@@ -14,7 +14,7 @@ const OTP_SALT_ROUNDS = parseInt(
   process.env.PHONE_OTP_SALT_ROUNDS || process.env.BCRYPT_SALT_ROUNDS || "10",
   10,
 );
-const roles = ["Admin", "SubAdmin", "Agent", "Traveler", "Guest"];
+const roles = ["Admin", "SubAdmin", "Agent", "Traveler", "Guest","Guide"];
 const MAX_OTP_ATTEMPTS = parseInt(
   process.env.PHONE_OTP_MAX_ATTEMPTS || "10",
   10,
@@ -683,7 +683,8 @@ class UserController {
     const user = await this.model
       .findOne({ phone })
       .select("+phoneOtp.codeHash")
-      .populate("agents");
+      .populate("agents")
+      .populate("guides");
     if (!user) {
       return null;
     }
@@ -730,6 +731,13 @@ class UserController {
         shouldCompleteProfile = false;
       }
       if (user?.agents?.verificationStatus === "Verified") {
+        isVerified = true;
+      }
+    } else if (user.role === "Guide") {
+      if (user?.guides) {
+        shouldCompleteProfile = false;
+      }
+      if (user?.guides?.status === "Active") {
         isVerified = true;
       }
     } else {

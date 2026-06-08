@@ -80,6 +80,24 @@ const guideAllocationSchema = new mongoose.Schema(
     lastTransferredAt: {
       type: Date,
     },
+    itineraryStatus: [
+      {
+        dayNumber: Number,
+        dayTitle: String,
+        status: {
+          type: String,
+          enum: ["Pending", "In Progress", "Completed"],
+          default: "Pending",
+        },
+        completedAt: {
+          type: Date,
+        },
+        notes: {
+          type: String,
+          trim: true,
+        },
+      },
+    ],
     isDisabled: {
       type: Boolean,
       default: false,
@@ -102,9 +120,9 @@ function validateAssociation(doc) {
   if (!doc.tourId && !doc.bookingId) {
     throw new Error("Either tourId or bookingId must be provided for guide allocation.");
   }
-  if (doc.tourId && doc.bookingId) {
-    throw new Error("Provide only one of tourId or bookingId for guide allocation.");
-  }
+  // if (doc.tourId && doc.bookingId) {
+  //   throw new Error("Provide only one of tourId or bookingId for guide allocation.");
+  // }
 }
 
 guideAllocationSchema.pre("save", function (next) {

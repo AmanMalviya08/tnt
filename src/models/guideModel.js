@@ -1,7 +1,10 @@
 const mongoose = require('mongoose');
 
 const guideSchema = new mongoose.Schema({
-
+    userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+    },
     registrationNumber: {
         type: String,
         trim: true
@@ -10,10 +13,10 @@ const guideSchema = new mongoose.Schema({
         type: String,
         trim: true
     },
-    gender:{
-        type:String,
-        enum:['Male','Female','Other'],
-        default:'Other'
+    gender: {
+        type: String,
+        enum: ['Male', 'Female', 'Other'],
+        default: 'Other'
     },
     email: {
         type: String,
@@ -197,6 +200,10 @@ const guideSchema = new mongoose.Schema({
         saturday: { type: Boolean, default: true },
         sunday: { type: Boolean, default: true }
     },
+    isAvailable: {
+        type: Boolean,
+        default: true
+    },
     preferredLocations: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Place'
@@ -239,6 +246,57 @@ const guideSchema = new mongoose.Schema({
         type: String,
         trim: true
     },
+
+    // ── KYC / Document Uploads ──
+    documents: {
+        passportImage: {
+            url: { type: String, default: null },
+            status: { type: String, enum: ['Pending', 'Approved', 'Rejected'], default: 'Pending' },
+            remarks: { type: String, default: null },
+            uploadedAt: { type: Date, default: null }
+        },
+        guideLicenseImage: {
+            url: { type: String, default: null },
+            status: { type: String, enum: ['Pending', 'Approved', 'Rejected'], default: 'Pending' },
+            remarks: { type: String, default: null },
+            uploadedAt: { type: Date, default: null }
+        },
+        aidCertificateImage: {
+            url: { type: String, default: null },
+            status: { type: String, enum: ['Pending', 'Approved', 'Rejected'], default: 'Pending' },
+            remarks: { type: String, default: null },
+            uploadedAt: { type: Date, default: null }
+        },
+        proofOfAddressImage: {
+            url: { type: String, default: null },
+            status: { type: String, enum: ['Pending', 'Approved', 'Rejected'], default: 'Pending' },
+            remarks: { type: String, default: null },
+            uploadedAt: { type: Date, default: null }
+        }
+    },
+
+    // Overall KYC verification status
+    documentVerification: {
+        status: {
+            type: String,
+            enum: ['Pending', 'Verified', 'Rejected', 'Partial'],
+            default: 'Pending'
+        },
+        verifiedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            default: null
+        },
+        verifiedAt: {
+            type: Date,
+            default: null
+        },
+        remarks: {
+            type: String,
+            default: null
+        }
+    },
+
     ratePerHour: {
         type: Number,
         default: 0,
