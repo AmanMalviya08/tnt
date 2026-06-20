@@ -4,22 +4,32 @@ const FCM_ENDPOINT = "https://fcm.googleapis.com/fcm/send";
 
 async function sendPushToToken(token, payload = {}) {
   const serverKey = process.env.FCM_SERVER_KEY;
-  if (!serverKey || !token) {
-    return { success: false, reason: "missing_server_key_or_token" };
+  if (!serverKey) {
+    console.warn("[FCM] FCM_SERVER_KEY is not set — push notifications are disabled.");
+    return { success: false, reason: "missing_server_key" };
   }
+  if (!token) {
+    return { success: false, reason: "missing_token" };
+  }
+
+  const title = payload.title || "Notification";
+  const body = payload.message || "";
 
   const requestPayload = {
     to: token,
     priority: "high",
     notification: {
-      title: payload.title || "Notification",
-      body: payload.message || "",
+      title,
+      body,
+      sound: "default",
+      android_channel_id: "general",
     },
     data: {
-      type: payload.type || "admin",
-      redirectScreen: payload.redirectScreen || "",
+      title: String(title),
+      message: String(body),
+      type: String(payload.type || "admin"),
+      redirectScreen: String(payload.redirectScreen || ""),
       redirectParams: JSON.stringify(payload.redirectParams || {}),
-      ...(payload.meta || {}),
     },
   };
 
@@ -34,9 +44,11 @@ async function sendPushToToken(token, payload = {}) {
 
     return { success: true, data: response.data };
   } catch (error) {
+    const reason = error?.response?.data || error.message || "push_failed";
+    console.warn("[FCM] Push failed:", typeof reason === "object" ? JSON.stringify(reason) : reason);
     return {
       success: false,
-      reason: error?.response?.data || error.message || "push_failed",
+      reason,
     };
   }
 }

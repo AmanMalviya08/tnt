@@ -228,12 +228,29 @@ class BookingController {
   }
 
   async getBookingById(id) {
-    return this.model
+    const populateQuery = () => this.model
       .findById(id)
       .populate("selectedPackageId")
       .populate("selectedTourId")
       .populate("cityId")
       .populate("assignedAgent", "firstName lastName email");
+
+    let booking = null;
+
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      booking = await populateQuery();
+    }
+
+    if (!booking) {
+      booking = await this.model
+        .findOne({ bookingId: id })
+        .populate("selectedPackageId")
+        .populate("selectedTourId")
+        .populate("cityId")
+        .populate("assignedAgent", "firstName lastName email");
+    }
+
+    return booking;
   }
 
   async updateBooking(id, payload) {
@@ -241,6 +258,52 @@ class BookingController {
       new: true,
       runValidators: true,
     });
+  }
+
+  /**
+   * Mark a booking as paid using mock/test payment (dev & USE_MOCK_PAYMENTS).
+   */
+  async completeTestPayment(id, options = {}) {
+    const booking = await this.model.findById(id);
+    if (!booking) return null;
+
+    if (booking.paymentStatus === "Paid") {
+      const err = new Error("Booking is already fully paid");
+      err.code = "ALREADY_PAID";
+      throw err;
+    }
+
+    const transactionId =
+      options.transactionId || `pay_mock_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const paymentMethod = options.paymentMethod || booking.paymentMethod || "Online";
+    const paidAmount = Number(booking.finalAmount ?? booking.totalAmount ?? 0);
+
+    const updated = await this.model.findByIdAndUpdate(
+      id,
+      {
+        paymentStatus: "Paid",
+        paymentMethod,
+        transactionId,
+        advancePaid: paidAmount,
+        remainingAmount: 0,
+        bookingStatus:
+          booking.bookingStatus === "Pending" ? "Confirmed" : booking.bookingStatus,
+      },
+      { new: true, runValidators: true },
+    );
+
+    if (updated) {
+      setImmediate(async () => {
+        try {
+          const { creditGuideCommissionForBooking } = require("../services/guideCommissionService");
+          await creditGuideCommissionForBooking(updated._id, { trigger: "payment" });
+        } catch (err) {
+          console.error("[completeTestPayment] Guide commission credit failed:", err.message);
+        }
+      });
+    }
+
+    return updated;
   }
 
   async setBookingDisabled(id, options = {}) {
@@ -273,6 +336,55 @@ class BookingController {
         runValidators: true,
       },
     );
+  }
+
+  async cancelBooking(id, options = {}) {
+    const { reason, userId } = options;
+    const booking = await this.model.findById(id);
+
+    if (!booking) {
+      return null;
+    }
+
+    if (
+      userId &&
+      booking.userId &&
+      booking.userId.toString() !== userId.toString()
+    ) {
+      throw new Error("Not authorized to cancel this booking");
+    }
+
+    if (booking.bookingStatus === "Cancelled") {
+      throw new Error("Booking is already cancelled");
+    }
+
+    if (booking.bookingStatus === "Completed") {
+      throw new Error("Completed bookings cannot be cancelled");
+    }
+
+    if (booking.travelStartDate && new Date(booking.travelStartDate) <= new Date()) {
+      throw new Error("Cannot cancel a trip that has already started");
+    }
+
+    return this.model
+      .findByIdAndUpdate(
+        id,
+        {
+          $set: {
+            bookingStatus: "Cancelled",
+            cancellationReason: (reason || "Change of plans").trim(),
+            cancelledAt: new Date(),
+          },
+        },
+        {
+          new: true,
+          runValidators: true,
+        },
+      )
+      .populate("selectedPackageId")
+      .populate("selectedTourId")
+      .populate("cityId")
+      .populate("assignedAgent", "firstName lastName email");
   }
   async getBookingInvoiceUrlById(bookingId) {
 

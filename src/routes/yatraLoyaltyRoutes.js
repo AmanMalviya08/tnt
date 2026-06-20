@@ -4,6 +4,7 @@ const {
     getLoyaltyStatus,
     checkEligibilityAndGetDiscount,
     getAllLoyaltyRecords,
+    getRewardHistory,
 } = require("../controller/yatraLoyaltyController");
 
 const router = express.Router();
@@ -39,6 +40,23 @@ router.get("/check-discount", protect, async (req, res) => {
             message: result.isEligible
                 ? "You are eligible for a Group Yatra loyalty discount!"
                 : "No loyalty discount available at this time.",
+        });
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+});
+
+/**
+ * GET /api/yatra-loyalty/history
+ * User reward history (milestones, applied rewards).
+ */
+router.get("/history", protect, async (req, res) => {
+    try {
+        const result = await getRewardHistory(req.user.userId, req.query);
+        res.status(200).json({
+            success: true,
+            ...result,
+            message: "Reward history fetched successfully",
         });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });

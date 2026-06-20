@@ -76,6 +76,14 @@ const userSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    dob: {
+      type: Date,
+    },
+    gender: {
+      type: String,
+      enum: ["Male", "Female", "Other"],
+      trim: true,
+    },
     bio: {
       type: String,
       trim: true,
@@ -117,6 +125,8 @@ const userSchema = new mongoose.Schema(
       language: {
         type: String,
         trim: true,
+        enum: ["en", "hi", "mr", "gu"],
+        default: "en",
       },
     },
     isDisabled: {

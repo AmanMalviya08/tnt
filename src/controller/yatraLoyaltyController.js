@@ -1,9 +1,14 @@
 const mongoose = require("mongoose");
 const { userModel } = require("../models/userModel");
-const CompanyModel = require("../models/companyModel");
+const {
+    getLoyaltyConfig,
+    recordLoyaltyEvent,
+    sendMilestoneNotification,
+    getRewardHistory,
+    REQUIRED_YATRAS,
+} = require("../services/loyaltyService");
 
 const DEFAULT_PAGE_SIZE = parseInt(process.env.DEFAULT_PAGE_SIZE || "20", 10);
-const REQUIRED_YATRAS = 4; // 4 completions unlock the one-time 5th-Yatra discount
 
 // ---------------------------------------------------------------------------
 // Internal helper — create an in-app notification record for the user
@@ -33,11 +38,7 @@ async function _createNotification(userId, title, message) {
 // Get the company's current loyalty discount settings
 // ---------------------------------------------------------------------------
 async function _getLoyaltyConfig() {
-    const company = await CompanyModel.findOne({}).lean();
-    return {
-        discountType: company?.yatraLoyaltyDiscountType || "flat",
-        discountValue: company?.yatraLoyaltyDiscountValue ?? 50,
-    };
+    return getLoyaltyConfig();
 }
 
 // ---------------------------------------------------------------------------
@@ -89,6 +90,30 @@ async function incrementCompletedYatras(userId, bookingId) {
             "🎉 You've unlocked a Group Yatra Offer!",
             `You have completed ${required} Group Yatras! Your next Group Yatra booking will get a ${discountText}. This is a one-time offer — don't miss it!`
         );
+
+        await recordLoyaltyEvent({
+            userId,
+            eventType: "milestone_unlocked",
+            completedGroupYatras: newCount,
+            requiredYatras: required,
+            discountType: config.discountType,
+            discountValue: config.discountValue,
+            bookingId,
+            message: `Unlocked reward after ${required} Group Yatras`,
+        });
+
+        sendMilestoneNotification(userId, required, config).catch((err) =>
+            console.error("[YatraLoyalty] FCM push failed:", err.message)
+        );
+    } else {
+        await recordLoyaltyEvent({
+            userId,
+            eventType: "progress_increment",
+            completedGroupYatras: newCount,
+            requiredYatras: required,
+            bookingId,
+            message: `Completed Group Yatra ${newCount}/${required}`,
+        });
     }
 
     return user;
@@ -134,6 +159,15 @@ async function consumeDiscount(userId, bookingId, appliedDiscountType, appliedDi
             "yatraLoyalty.appliedDiscountType": appliedDiscountType,
             "yatraLoyalty.appliedDiscountValue": appliedDiscountValue,
         },
+    });
+
+    await recordLoyaltyEvent({
+        userId,
+        eventType: "reward_applied",
+        discountType: appliedDiscountType,
+        discountValue: appliedDiscountValue,
+        bookingId,
+        message: `Reward applied: ${appliedDiscountType === "free" ? "Free Group Yatra" : `₹${appliedDiscountValue} off`}`,
     });
 
     return true;
@@ -247,4 +281,5 @@ module.exports = {
     consumeDiscount,
     getLoyaltyStatus,
     getAllLoyaltyRecords,
+    getRewardHistory,
 };

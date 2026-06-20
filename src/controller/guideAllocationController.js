@@ -2,15 +2,78 @@ const { guideAllocationModel } = require("../models/guideAllocationModel");
 const emailService = require("../services/emailService");
 const Guide = require("../models/guideModel");
 const { bookingModel } = require("../models/bookingModel");
-const Company = require("../models/companyModel");
-const { guideWalletModel } = require("../models/guideWalletModel");
-const Transaction = require("../models/transactionModel");
+const { notifyUser } = require("../services/notificationDispatchService");
 const mongoose = require("mongoose");
 
 
 class GuideAllocationController {
   constructor(model = guideAllocationModel) {
     this.model = model;
+  }
+
+  static joinMeetingPoints(value) {
+    if (!value) return null;
+    if (Array.isArray(value)) {
+      const points = value.filter(Boolean).map(String);
+      return points.length ? points.join(", ") : null;
+    }
+    return String(value).trim() || null;
+  }
+
+  static resolveGuestCount({ booking, tour, bookingTour } = {}) {
+    if (booking?.numberOfTravelers) return booking.numberOfTravelers;
+    if (booking?.travelerDetails?.length) return booking.travelerDetails.length;
+    const adults = Number(booking?.adults) || 0;
+    const children = Number(booking?.children) || 0;
+    if (adults + children > 0) return adults + children;
+    if (tour?.totalSeats) return tour.totalSeats;
+    if (bookingTour?.totalSeats) return bookingTour.totalSeats;
+    return null;
+  }
+
+  static resolvePickupTime({ tour, bookingTour } = {}) {
+    return tour?.pickupTime || bookingTour?.pickupTime || null;
+  }
+
+  static resolveMeetingPoint({ tour, bookingTour, pkg, city } = {}) {
+    return (
+      GuideAllocationController.joinMeetingPoints(tour?.meetingPoint)
+      || GuideAllocationController.joinMeetingPoints(bookingTour?.meetingPoint)
+      || pkg?.pickupPoint
+      || city?.cityName
+      || null
+    );
+  }
+
+  formatAllocationSummary(item = {}) {
+    const tour = item.tour || null;
+    const bookingTour = item.bookingTour || null;
+    const booking = item.booking || null;
+    const pkg = item.package || null;
+    const city = item.city || null;
+
+    return {
+      ...item,
+      pickupTime: item.pickupTime
+        || GuideAllocationController.resolvePickupTime({ tour, bookingTour }),
+      numberOfPeople: item.numberOfPeople
+        ?? GuideAllocationController.resolveGuestCount({ booking, tour, bookingTour }),
+      meetingPoint: GuideAllocationController.resolveMeetingPoint({
+        tour,
+        bookingTour,
+        pkg,
+        city,
+      }) || item.meetingPoint || null,
+      tour: undefined,
+      booking: undefined,
+      bookingTour: undefined,
+      package: undefined,
+      city: undefined,
+      _tourMeetingPoint: undefined,
+      _bookingTourMeetingPoint: undefined,
+      _packagePickupPoint: undefined,
+      _cityName: undefined,
+    };
   }
 
   async createAllocation(payload) {
@@ -93,6 +156,42 @@ class GuideAllocationController {
       }
     }
 
+    const shouldNotifyApp = payload.notifyApp !== false;
+    if (shouldNotifyApp && allocation?.guideId) {
+      const guideDoc = await Guide.findById(allocation.guideId).select("userId fullName");
+      if (guideDoc?.userId) {
+        const tour = allocation.tourId && typeof allocation.tourId === "object" ? allocation.tourId : null;
+        const booking = allocation.bookingId && typeof allocation.bookingId === "object" ? allocation.bookingId : null;
+        const tourName = tour?.tourName || booking?.customerName || "a new tour";
+        setImmediate(() => {
+          notifyUser(guideDoc.userId, {
+            title: "New Tour Assigned",
+            message: `You have been assigned to ${tourName}. Open the app to view details.`,
+            type: "tour",
+            redirectScreen: "GuideViewDetails",
+            redirectParams: { allocationId: allocation._id?.toString() },
+            meta: {
+              category: "tour",
+              allocationId: allocation._id?.toString(),
+              assignmentType: allocation.assignmentType || null,
+            },
+          }).catch((err) => console.error("[Notify] Guide allocation:", err.message));
+        });
+      }
+    }
+
+    const bookingRef = payload.bookingId || allocation.bookingId;
+    if (bookingRef) {
+      setImmediate(async () => {
+        try {
+          const { creditGuideCommissionForBooking } = require("../services/guideCommissionService");
+          await creditGuideCommissionForBooking(bookingRef, { trigger: "payment" });
+        } catch (err) {
+          console.error("[createAllocation] Guide commission credit failed:", err.message);
+        }
+      });
+    }
+
     console.log(allocation);
     return allocation;
   }
@@ -158,12 +257,149 @@ class GuideAllocationController {
   }
 
   async getAllocationById(id) {
-    return this.model
+    const allocation = await this.model
       .findById(id)
-      .populate("guideId", "fullName email phone")
+      .populate("guideId", "fullName email phone userId")
       .populate("tourId")
-      .populate("bookingId")
-      .populate("assignedBy", "firstName lastName email");
+      .populate({
+        path: "bookingId",
+        populate: [
+          { path: "selectedPackageId" },
+          { path: "selectedTourId" },
+          { path: "cityId", select: "cityName" },
+        ],
+      })
+      .populate("assignedBy", "firstName lastName email")
+      .lean();
+
+    if (!allocation) return null;
+
+    const tour = allocation.tourId && typeof allocation.tourId === "object" ? allocation.tourId : null;
+    const booking = allocation.bookingId && typeof allocation.bookingId === "object" ? allocation.bookingId : null;
+    let pkg = booking?.selectedPackageId && typeof booking.selectedPackageId === "object"
+      ? booking.selectedPackageId
+      : null;
+
+    if (!pkg && tour?.packageId) {
+      const { packageModel } = require("../models/packageModel");
+      pkg = await packageModel.findById(tour.packageId).lean();
+    }
+
+    const name = tour?.tourName || pkg?.packageName || booking?.customerName || "Tour";
+    const packageItinerary = pkg?.itinerary || [];
+    const statusItems = allocation.itineraryStatus || [];
+
+    const mergedItinerary = packageItinerary.length
+      ? packageItinerary.map((day) => {
+          const statusDay = statusItems.find((s) => s.dayNumber === day.dayNumber) || {};
+          return {
+            dayNumber: day.dayNumber,
+            dayTitle: day.dayTitle || statusDay.dayTitle,
+            time: day.startTime || day.time || day.dayTitle || null,
+            subtitle: day.location || day.destination || day.placeName || "",
+            description: day.description || day.activities || statusDay.notes || "",
+            status: statusDay.status || "Pending",
+            notes: statusDay.notes || null,
+          };
+        })
+      : statusItems.map((day) => ({
+          dayNumber: day.dayNumber,
+          dayTitle: day.dayTitle,
+          time: day.dayTitle,
+          subtitle: "",
+          description: day.notes || "",
+          status: day.status || "Pending",
+          notes: day.notes || null,
+        }));
+
+    const guideObjectId = allocation.guideId?._id || allocation.guideId;
+    const tourObjectId = tour?._id || allocation.tourId;
+    const bookingObjectId = booking?._id || allocation.bookingId;
+
+    const Review = mongoose.model("Review");
+    const GuideTourLogController = require("./guideTourLogController");
+    const tourLogController = new GuideTourLogController();
+
+    if (booking?.paymentStatus === "Paid") {
+      try {
+        const { creditGuideCommissionForAllocation } = require("../services/guideCommissionService");
+        await creditGuideCommissionForAllocation(allocation, booking, { trigger: "payment" });
+      } catch (commissionErr) {
+        console.error("[getAllocationById] Guide commission credit failed:", commissionErr.message);
+      }
+    }
+
+    const reviewFilter = { guideId: guideObjectId };
+    const reviewOr = [];
+    if (tourObjectId) reviewOr.push({ tourId: tourObjectId });
+    if (bookingObjectId) reviewOr.push({ bookingId: bookingObjectId });
+    if (reviewOr.length) reviewFilter.$or = reviewOr;
+
+    const [reviews, tourLogs, commissionTxn] = await Promise.all([
+      Review.find(reviewFilter)
+        .populate("userId", "firstName lastName avatarUrl phone")
+        .sort({ createdAt: -1 })
+        .lean(),
+      tourLogController.getLogsByAllocation(allocation._id),
+      mongoose.model("Transaction").findOne({
+        allocationId: allocation._id,
+        guideId: guideObjectId,
+        category: "Guide Commission",
+      }).select("amount commissionPercent bookingAmount status").lean(),
+    ]);
+
+    const itineraryNotes = statusItems
+      .map((day) => day.notes)
+      .filter(Boolean)
+      .join(" ");
+    const tourLogFeedback = tourLogs.map((log) => log.feedback).filter(Boolean).join(" ");
+    const tourPhotos = tourLogs.flatMap((log) => (log.images || []).map((img) => img.url));
+
+    const resolvedTour = tour
+      || (booking?.selectedTourId && typeof booking.selectedTourId === "object"
+        ? booking.selectedTourId
+        : null);
+    const city = booking?.cityId && typeof booking.cityId === "object" ? booking.cityId : null;
+
+    return {
+      ...allocation,
+      name,
+      tourStartDate: (resolvedTour || tour)?.startDate || booking?.travelStartDate || allocation.startDate,
+      pickupTime: GuideAllocationController.resolvePickupTime({
+        tour: tour || resolvedTour,
+        bookingTour: resolvedTour && !tour ? resolvedTour : null,
+      }),
+      meetingPoint: GuideAllocationController.resolveMeetingPoint({
+        tour: tour || resolvedTour,
+        bookingTour: resolvedTour && !tour ? resolvedTour : null,
+        pkg,
+        city,
+      }),
+      numberOfPeople: GuideAllocationController.resolveGuestCount({
+        booking,
+        tour: tour || resolvedTour,
+        bookingTour: resolvedTour,
+      }),
+      coverImage: tour?.coverImage || pkg?.coverImage || null,
+      durationInDays: tour?.durationInDays || pkg?.durationInDays || booking?.durationInDays || null,
+      packageItinerary: mergedItinerary,
+      booking,
+      tour,
+      package: pkg,
+      reviews,
+      tourLogs,
+      tourPhotos,
+      fieldReport: tourLogFeedback || itineraryNotes || allocation.notes || null,
+      tourSummary: tour?.description || pkg?.description || booking?.specialRequests || null,
+      commission: commissionTxn
+        ? {
+            amount: commissionTxn.amount || 0,
+            percent: commissionTxn.commissionPercent || 0,
+            bookingAmount: commissionTxn.bookingAmount || 0,
+            status: commissionTxn.status || null,
+          }
+        : null,
+    };
   }
 
   async updateAllocation(id, payload) {
@@ -197,7 +433,13 @@ class GuideAllocationController {
 
     // Match filter
     const matchFilter = { guideId: guideObjectId };
-    if (filter.status) matchFilter.status = filter.status;
+    if (filter.status) {
+      if (Array.isArray(filter.status)) {
+        matchFilter.status = { $in: filter.status };
+      } else {
+        matchFilter.status = filter.status;
+      }
+    }
     if (filter.assignmentType) matchFilter.assignmentType = filter.assignmentType;
 
     const pipeline = [
@@ -236,6 +478,26 @@ class GuideAllocationController {
         },
       },
       { $unwind: { path: "$package", preserveNullAndEmptyArrays: true } },
+
+      {
+        $lookup: {
+          from: "tours",
+          localField: "booking.selectedTourId",
+          foreignField: "_id",
+          as: "bookingTour",
+        },
+      },
+      { $unwind: { path: "$bookingTour", preserveNullAndEmptyArrays: true } },
+
+      {
+        $lookup: {
+          from: "cities",
+          localField: "booking.cityId",
+          foreignField: "_id",
+          as: "city",
+        },
+      },
+      { $unwind: { path: "$city", preserveNullAndEmptyArrays: true } },
 
       // ── Lookup Guide Commission from Transactions ──
       {
@@ -337,10 +599,32 @@ class GuideAllocationController {
 
                 // Number of people
                 numberOfPeople: {
-                  $cond: {
-                    if: { $ifNull: ["$tour.totalSeats", false] },
-                    then: "$tour.totalSeats",
-                    else: { $ifNull: ["$booking.numberOfTravelers", null] },
+                  $let: {
+                    vars: {
+                      travelers: { $ifNull: ["$booking.numberOfTravelers", 0] },
+                      detailsCount: { $size: { $ifNull: ["$booking.travelerDetails", []] } },
+                      adults: { $ifNull: ["$booking.adults", 0] },
+                      children: { $ifNull: ["$booking.children", 0] },
+                    },
+                    in: {
+                      $cond: {
+                        if: { $gt: ["$$travelers", 0] },
+                        then: "$$travelers",
+                        else: {
+                          $cond: {
+                            if: { $gt: ["$$detailsCount", 0] },
+                            then: "$$detailsCount",
+                            else: {
+                              $cond: {
+                                if: { $gt: [{ $add: ["$$adults", "$$children"] }, 0] },
+                                then: { $add: ["$$adults", "$$children"] },
+                                else: { $ifNull: ["$tour.totalSeats", "$bookingTour.totalSeats"] },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
                   },
                 },
 
@@ -373,8 +657,18 @@ class GuideAllocationController {
                 coverImage: { $ifNull: ["$tour.coverImage", null] },
 
                 // Tour starting time & pickup location
-                pickupTime: { $ifNull: ["$tour.pickupTime", null] },
-                meetingPoint: { $ifNull: ["$tour.meetingPoint", null] },
+                pickupTime: { $ifNull: ["$tour.pickupTime", "$bookingTour.pickupTime"] },
+                meetingPoint: {
+                  $ifNull: [
+                    "$package.pickupPoint",
+                    "$city.cityName",
+                  ],
+                },
+                tour: 1,
+                booking: 1,
+                bookingTour: 1,
+                package: 1,
+                city: 1,
               },
             },
           ],
@@ -385,7 +679,7 @@ class GuideAllocationController {
     const result = await this.model.aggregate(pipeline);
 
     const totalItems = result[0].metadata[0]?.totalItems || 0;
-    const allocations = result[0].data || [];
+    const allocations = (result[0].data || []).map((item) => this.formatAllocationSummary(item));
     const totalPages = Math.max(Math.ceil(totalItems / pageSize) || 1, 1);
 
     return {
@@ -401,10 +695,12 @@ class GuideAllocationController {
     };
   }
 
-x
   async getGuideAllocationHistory(userId, filter = {}, options = {}) {
-    // Force status to Completed for history
-    filter.status = "Completed";
+    if (!filter.status) {
+      filter.status = ["Completed", "Cancelled"];
+    } else if (typeof filter.status === "string") {
+      filter.status = [filter.status];
+    }
     return this.getAllocationsByGuideUserId(userId, filter, options);
   }
 
@@ -585,7 +881,7 @@ x
 
     // Populate the new guide's details, tour/package, and booking (with selected package) for email
     allocation = await allocation.populate([
-      { path: "guideId", select: "fullName email" },
+      { path: "guideId", select: "fullName email userId" },
       { path: "tourId", populate: { path: "packageId", select: "packageName durationDays basePricePerPerson" } },
       {
         path: "bookingId",
@@ -599,11 +895,30 @@ x
     // Send email to the new guide with allocation + tour/package info
     if (allocation.guideId?.email) {
       try {
-        const temp = emailService.sendGuideAllocationEmail(allocation.guideId.email, allocation);
-        // console.log("Guide transfer email sent:", temp);
+        await emailService.sendGuideAllocationEmail(allocation.guideId.email, allocation);
       } catch (emailError) {
-        // console.error("Failed to send guide transfer email:", emailError.message);
+        console.error("Failed to send guide transfer email:", emailError.message);
       }
+    }
+
+    if (allocation.guideId?.userId) {
+      const tourName = allocation.tourId?.tourName
+        || allocation.bookingId?.selectedPackageId?.packageName
+        || allocation.bookingId?.customerName
+        || "a tour";
+      setImmediate(() => {
+        notifyUser(allocation.guideId.userId, {
+          title: "Tour Transferred to You",
+          message: `A tour has been transferred to you: ${tourName}.`,
+          type: "tour",
+          redirectScreen: "GuideViewDetails",
+          redirectParams: { allocationId: allocation._id?.toString() },
+          meta: {
+            category: "tour",
+            allocationId: allocation._id?.toString(),
+          },
+        }).catch((err) => console.error("[Notify] Guide transfer:", err.message));
+      });
     }
 
     return allocation;
@@ -662,63 +977,9 @@ x
   }
 
   async _creditGuideCommission(allocation) {
-    // Parallel fetch: booking, company settings, guide, and duplicate check
-    const [booking, company, guide, existingTransaction] = await Promise.all([
-      bookingModel.findById(allocation.bookingId).lean(),
-      Company.findOne().lean(),
-      Guide.findById(allocation.guideId).lean(),
-      Transaction.findOne({ allocationId: allocation._id, category: "Guide Commission" }).lean(),
-    ]);
-
-    if (existingTransaction) return;
-    if (!booking?.totalAmount) return;
-    if (!company?.guideCommission || company.guideCommission <= 0) return;
-    if (!guide) return;
-
-    const commissionPercent = company.guideCommission;
-    const bookingAmount = booking.totalAmount;
-    const commissionAmount = Math.round((bookingAmount * commissionPercent) / 100 * 100) / 100;
-    if (commissionAmount <= 0) return;
-
-    const session = await mongoose.startSession();
-    session.startTransaction();
-    try {
-      // Atomic upsert: find or create wallet and increment in one operation
-      await guideWalletModel.findOneAndUpdate(
-        { guideId: allocation.guideId },
-        { $inc: { balance: commissionAmount, totalEarnings: commissionAmount } },
-        { upsert: true, session }
-      );
-
-      // Create transaction record
-      await Transaction.create(
-        [
-          {
-            userId: guide.userId,
-            guideId: allocation.guideId,
-            allocationId: allocation._id,
-            bookingId: allocation.bookingId,
-            amount: commissionAmount,
-            type: "Credit",
-            category: "Guide Commission",
-            status: "Completed",
-            commissionPercent,
-            bookingAmount,
-            description: `Guide commission ${commissionPercent}% on booking ${booking.bookingId || booking._id} — ₹${bookingAmount} × ${commissionPercent}% = ₹${commissionAmount}`,
-            createdBy: guide.userId,
-          },
-        ],
-        { session }
-      );
-
-      await session.commitTransaction();
-      console.log(`Guide commission ₹${commissionAmount} credited to guide ${guide.fullName}`);
-    } catch (error) {
-      await session.abortTransaction();
-      throw error;
-    } finally {
-      session.endSession();
-    }
+    const { creditGuideCommissionForAllocation } = require("../services/guideCommissionService");
+    const booking = await bookingModel.findById(allocation.bookingId).lean();
+    await creditGuideCommissionForAllocation(allocation, booking, { trigger: "completion" });
   }
 
   async updateAllocationStatus(id, payload, user) {

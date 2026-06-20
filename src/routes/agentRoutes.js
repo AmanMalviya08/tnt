@@ -2,6 +2,7 @@ const express = require("express");
 const AgentController = require("../controller/agentController");
 const { agentModel, agentStatuses, availabilityStatuses } = require("../models/agentModel");
 const { protect } = require("../middleware/authMiddleware");
+const { notifyUser } = require("../services/notificationDispatchService");
 
 const router = express.Router();
 const agentController = new AgentController(agentModel);
@@ -37,6 +38,18 @@ router.patch("/:id", protect, async (req, res) => {
   try {
     const { id } = req.params;
     const agent = await agentController.changeStatus(id, req.body, req.user);
+
+    if (agent?.userId && req.body?.verificationStatus === "Verified") {
+      setImmediate(() => {
+        notifyUser(agent.userId, {
+          title: "Documents Verified",
+          message: "Your documents have been verified. You can now access all agent features.",
+          type: "system",
+          redirectScreen: "DocumentsVerification",
+          meta: { verificationStatus: "Verified" },
+        }).catch((err) => console.error("[Notify] Agent verification:", err.message));
+      });
+    }
 
     res.status(201).json({ success: true, message: "Agent status changed successfully", data: agent });
   } catch (error) {

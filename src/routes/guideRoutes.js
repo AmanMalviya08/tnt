@@ -2,14 +2,17 @@ const express = require("express");
 const GuideController = require("../controller/guideController");
 const Guide = require("../models/guideModel");
 const { protect } = require("../middleware/authMiddleware");
+const { notifyUser } = require("../services/notificationDispatchService");
 const { uploadFields } = require("../middleware/s3Upload");
 const GuideAllocationController = require("../controller/guideAllocationController");
+const GuideTourLogController = require("../controller/guideTourLogController");
 const {
   guideAllocationModel,
 } = require("../models/guideAllocationModel");
 const router = express.Router();
 const guideController = new GuideController(Guide);
 const guideAllocationController = new GuideAllocationController(guideAllocationModel);
+const guideTourLogController = new GuideTourLogController();
 
 // Multer middleware for guide document uploads
 const guideDocUpload = uploadFields([
@@ -19,7 +22,7 @@ const guideDocUpload = uploadFields([
   { name: "proofOfAddressImage", maxCount: 1 },
 ]);
 
-router.post("/", guideDocUpload, async (req, res) => {
+router.post("/", protect, guideDocUpload, async (req, res) => {
   try {
     // Map uploaded files to documents payload
     const docFields = ['passportImage', 'guideLicenseImage', 'aidCertificateImage', 'proofOfAddressImage'];
@@ -39,6 +42,7 @@ router.post("/", guideDocUpload, async (req, res) => {
       }
     }
     req.body.documents = documents;
+    req.body.createdBy = req.user?.userId || req.body.createdBy;
 
     const guide = await guideController.registerGuide(req.body);
     const assignGuide = req?.body?.assignGuide;
@@ -119,6 +123,44 @@ router.get("/reviews/:guideId", async (req, res) => {
     });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.get("/me/profile", protect, async (req, res) => {
+  try {
+    const guide = await Guide.findOne({ userId: req.user.userId })
+      .populate("createdBy", "firstName lastName email");
+    if (!guide) {
+      return res.status(404).json({
+        success: false,
+        message: "Guide profile not found for this user",
+      });
+    }
+    res.status(200).json({
+      success: true,
+      data: guide,
+      message: "Guide profile fetched successfully",
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.patch("/me/profile", protect, async (req, res) => {
+  try {
+    const guide = await guideController.upsertGuideForUser(
+      req.user.userId,
+      req.body,
+      req.user.userId
+    );
+    res.status(200).json({
+      success: true,
+      data: guide,
+      message: "Guide profile updated successfully",
+    });
+  } catch (error) {
+    const statusCode = error.message === "Guide profile not found for this user" ? 404 : 400;
+    res.status(statusCode).json({ success: false, message: error.message });
   }
 });
 
@@ -267,6 +309,55 @@ router.patch("/complaints/:guideId/:complaintId", async (req, res) => {
   }
 });
 
+// ── Guide Tour Logs (Post-Tour Field Reports) ──
+router.get("/tour-logs/my-logs", protect, async (req, res) => {
+  try {
+    const { page, limit, allocationId } = req.query;
+    const result = await guideTourLogController.getMyTourLogs(req.user.userId, {
+      page,
+      limit,
+      allocationId,
+    });
+    res.status(200).json({
+      success: true,
+      message: "Tour logs fetched successfully",
+      data: result.data,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    const statusCode = error.message === "Guide profile not found for this user" ? 404 : 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+});
+
+router.post("/tour-logs", protect, async (req, res) => {
+  try {
+    const log = await guideTourLogController.createTourLog(req.user.userId, req.body);
+    res.status(201).json({
+      success: true,
+      message: "Tour log submitted successfully",
+      data: log,
+    });
+  } catch (error) {
+    const statusCode = error.message === "Guide profile not found for this user" ? 404 : 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+});
+
+router.delete("/tour-logs/:id", protect, async (req, res) => {
+  try {
+    const log = await guideTourLogController.deleteTourLog(req.user.userId, req.params.id);
+    res.status(200).json({
+      success: true,
+      message: "Tour log deleted successfully",
+      data: log,
+    });
+  } catch (error) {
+    const statusCode = error.message === "Tour log not found" ? 404 : 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+});
+
 // ── Admin: Verify Guide Documents ──
 router.patch("/verify-documents/:guideId", protect, async (req, res) => {
   try {
@@ -278,6 +369,18 @@ router.patch("/verify-documents/:guideId", protect, async (req, res) => {
       req.body,
       verifiedBy
     );
+
+    if (guide?.userId && guide?.documentVerification?.status === "Verified") {
+      setImmediate(() => {
+        notifyUser(guide.userId, {
+          title: "Documents Verified",
+          message: "Your guide documents have been verified. Your profile is now active.",
+          type: "system",
+          redirectScreen: "DocumentsVerification",
+          meta: { verificationStatus: "Verified" },
+        }).catch((err) => console.error("[Notify] Guide verification:", err.message));
+      });
+    }
 
     res.status(200).json({
       success: true,

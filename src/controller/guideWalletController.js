@@ -2,6 +2,7 @@ const { guideWalletModel } = require("../models/guideWalletModel");
 const Transaction = require("../models/transactionModel");
 const Guide = require("../models/guideModel");
 const mongoose = require("mongoose");
+const { notifyUser, formatInr } = require("../services/notificationDispatchService");
 
 // Get Guide Wallet Details (balance + recent transactions)
 exports.getGuideWalletDetails = async (req, res) => {
@@ -178,6 +179,20 @@ exports.requestGuideWithdrawal = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
+    const createdTxn = transaction[0];
+    setImmediate(() => {
+      notifyUser(userId, {
+        title: "Withdrawal Requested",
+        message: `Your withdrawal of ${formatInr(amount)} via ${withdrawalMethod} has been submitted.`,
+        type: "system",
+        redirectScreen: "WithdrawalHistory",
+        meta: {
+          category: "payment",
+          transactionId: createdTxn?._id?.toString?.(),
+        },
+      }).catch((err) => console.error("[Notify] Guide withdrawal:", err.message));
+    });
+
     res.status(201).json({
       success: true,
       message: "Withdrawal request submitted successfully",
@@ -272,6 +287,21 @@ exports.approveGuideWithdrawal = async (req, res) => {
     transaction.transactionId = paymentTransactionId;
     await transaction.save();
 
+    if (transaction.userId) {
+      setImmediate(() => {
+        notifyUser(transaction.userId, {
+          title: "Withdrawal Approved",
+          message: `Your withdrawal of ${formatInr(transaction.amount)} has been approved.`,
+          type: "system",
+          redirectScreen: "WithdrawalHistory",
+          meta: {
+            category: "payment",
+            transactionId: transaction._id?.toString(),
+          },
+        }).catch((err) => console.error("[Notify] Guide withdrawal approved:", err.message));
+      });
+    }
+
     res.status(200).json({
       success: true,
       message: "Guide withdrawal approved successfully",
@@ -320,6 +350,23 @@ exports.rejectGuideWithdrawal = async (req, res) => {
 
     await session.commitTransaction();
     session.endSession();
+
+    if (transaction.userId) {
+      setImmediate(() => {
+        notifyUser(transaction.userId, {
+          title: "Withdrawal Rejected",
+          message: reason
+            ? `Your withdrawal of ${formatInr(transaction.amount)} was rejected: ${reason}`
+            : `Your withdrawal of ${formatInr(transaction.amount)} was rejected and refunded to your wallet.`,
+          type: "system",
+          redirectScreen: "WithdrawalHistory",
+          meta: {
+            category: "payment",
+            transactionId: transaction._id?.toString(),
+          },
+        }).catch((err) => console.error("[Notify] Guide withdrawal rejected:", err.message));
+      });
+    }
 
     res.status(200).json({
       success: true,

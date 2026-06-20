@@ -6,25 +6,20 @@ const { packageModel } = require("../models/packageModel");
 const { tourModel } = require("../models/tourModel");
 const Razorpay = require("razorpay");
 const { verifyPayment } = require("../utils/razorpayVerify");
-const { sendBookingWhatsApp } = require("../services/whatsappFlow");
+const { sendBookingConfirmationNotifications } = require("../services/bookingNotificationService");
 const dotenv = require("dotenv");
 dotenv.config();
-const { Worker } = require("worker_threads");
-const path = require("path");
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
 const InvoiceService = require("../services/invoiceService");
-const emailService = require("../services/emailService");
-const WhatsAppService = require("../services/whatsappService");
 const Transaction = require("../models/transactionModel");
 const { agentModel } = require("../models/agentModel");
 const Company = require("../models/companyModel");
 const { userModel } = require("../models/userModel");
 const { incrementBookingCount } = require("./rewardController");
-const { sendBookingSMS } = require("../utils/smsSendHelper");
 const {
   isMockPaymentEnabled,
   startOptionalSession,
@@ -33,9 +28,27 @@ const {
   saveOptions,
   applySession,
 } = require("../utils/mongoSession");
+const { createRazorpayOrderSafe } = require("../utils/razorpayOrderHelper");
+const { parseFlexibleDate, addDays } = require("../utils/dateParser");
+const {
+  normalizeOrderPaymentMethod,
+  normalizeBookingPaymentMethod,
+} = require("../utils/paymentMethodHelper");
+const {
+  checkEligibilityAndGetDiscount,
+  consumeDiscount,
+} = require("../controller/yatraLoyaltyController");
+const {
+  calculateDynamicPrice,
+  logPricingAudit,
+  roundCurrency,
+} = require("../services/dynamicPricingService");
+const {
+  calculatePaymentSplit,
+  recordPaymentHistory,
+} = require("../services/partialPaymentService");
 
 const invoiceService = new InvoiceService();
-const whatsappService = new WhatsAppService();
 
 const createBookingsFromCart = async (req, res) => {
   let session = null;
@@ -51,8 +64,10 @@ const createBookingsFromCart = async (req, res) => {
       selectedAddOns = [],
       adults = 0,
       children = 0,
+      infants = 0,
       checkInDate,
       selectedSeats = [],
+      paymentPlan = "full",
     } = req.body;
 
     // Validate ObjectIds before querying to prevent BSON/Cast Errors
@@ -166,7 +181,7 @@ const createBookingsFromCart = async (req, res) => {
       ? travelerDetailsMap
       : [];
 
-    const totalTravelers = adults + children;
+    const totalTravelers = adults + children + infants;
 
     // Pricing Logic
     let basePrice, childPrice, packageCostPerPerson, duration, cityId;
@@ -212,24 +227,94 @@ const createBookingsFromCart = async (req, res) => {
       }
     }
 
-    // Total Amount
-    const totalAmount =
+    // Total Amount (before dynamic pricing & loyalty)
+    let totalAmount =
       basePrice * adults * quantity -
       calculatedDiscountAmount +
       childPrice * children +
       addOnsTotal;
 
-    // Travel Dates
-    let finalTravelStartDate = checkInDate;
-    let finalTravelEndDate = new Date(checkInDate);
-    finalTravelEndDate.setDate(
-      finalTravelEndDate.getDate() + duration
-    );
+    // Travel Dates — app sends DD/MM/YYYY or ISO
+    let finalTravelStartDate;
+    let finalTravelEndDate;
 
     if (tourData) {
       finalTravelStartDate = tourData.startDate;
       finalTravelEndDate = tourData.endDate;
+    } else {
+      finalTravelStartDate = parseFlexibleDate(checkInDate);
+      if (!finalTravelStartDate) {
+        await abortOptionalSession(session);
+        session = null;
+        return res.status(400).json({
+          success: false,
+          message: "Invalid checkInDate format. Use DD/MM/YYYY or YYYY-MM-DD.",
+          checkInDate,
+        });
+      }
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const startDay = new Date(finalTravelStartDate);
+      startDay.setHours(0, 0, 0, 0);
+      if (startDay < today) {
+        await abortOptionalSession(session);
+        session = null;
+        return res.status(400).json({
+          success: false,
+          message: "checkInDate cannot be in the past",
+        });
+      }
+
+      finalTravelEndDate = addDays(finalTravelStartDate, duration);
     }
+
+    const bookingType = tourData ? "Group Tour" : "Package Tour";
+    const isGroupTour = bookingType === "Group Tour";
+
+    // Dynamic pricing surcharges
+    const dynamicPricing = await calculateDynamicPrice({
+      baseAmount: totalAmount,
+      travelDate: finalTravelStartDate,
+      packageId: packageData?._id,
+      tourId: tourData?._id,
+      tourData: tourData?.toObject?.() || tourData,
+      userId,
+      adults,
+    });
+
+    totalAmount = dynamicPricing.subtotalBeforeTax;
+    let loyaltyDiscountApplied = null;
+    let loyaltyDiscountAmount = 0;
+    let pricingBreakdown = [...dynamicPricing.breakdown];
+
+    // Yatra Loyalty — Group Tour only, auto-apply at checkout
+    if (isGroupTour && userId && adults > 1) {
+      const eligibility = await checkEligibilityAndGetDiscount(userId);
+      if (eligibility.isEligible) {
+        loyaltyDiscountApplied = eligibility;
+        if (eligibility.discountType === "free") {
+          loyaltyDiscountAmount = totalAmount;
+          pricingBreakdown.push({
+            label: "Yatra Loyalty Reward (Free Group Yatra)",
+            amount: -totalAmount,
+            type: "loyalty",
+          });
+          totalAmount = 0;
+        } else {
+          loyaltyDiscountAmount = eligibility.discountValue;
+          pricingBreakdown.push({
+            label: "Yatra Loyalty Reward",
+            amount: -loyaltyDiscountAmount,
+            type: "loyalty",
+          });
+          totalAmount = Math.max(totalAmount - loyaltyDiscountAmount, 0);
+        }
+      }
+    }
+
+    const paymentSplit = calculatePaymentSplit(totalAmount, paymentPlan);
+    const payableNow = paymentSplit.advanceAmount;
 
     // Create Booking
     const newBooking = new bookingModel({
@@ -238,7 +323,7 @@ const createBookingsFromCart = async (req, res) => {
       mobileNumber: customerInfo.phone,
       email: customerInfo.email,
       userType: "App User",
-      bookingType: tourData ? "Group Tour" : "Package Tour",
+      bookingType,
       selectedPackageId: packageData?._id,
       selectedTourId: tourData?._id
         ? new mongoose.Types.ObjectId(String(tourData._id))
@@ -259,7 +344,13 @@ const createBookingsFromCart = async (req, res) => {
       paymentStatus: "Pending",
       bookingStatus: "Pending",
       totalAmount,
-      discountAmount: calculatedDiscountAmount,
+      discountAmount: calculatedDiscountAmount + loyaltyDiscountAmount,
+      loyaltyDiscountApplied: Boolean(loyaltyDiscountApplied),
+      loyaltyDiscountAmount,
+      pricingBreakdown,
+      paymentPlan: paymentSplit.paymentPlan,
+      advancePaid: 0,
+      remainingAmount: paymentSplit.remainingAmount,
       createdBy: userId,
       assignedAgent,
       gstNumber: companyGstNumber,
@@ -268,16 +359,43 @@ const createBookingsFromCart = async (req, res) => {
 
     await newBooking.save(saveOptions(session));
 
+    if (loyaltyDiscountApplied) {
+      await consumeDiscount(
+        userId,
+        newBooking._id,
+        loyaltyDiscountApplied.discountType,
+        loyaltyDiscountApplied.discountType === "free"
+          ? loyaltyDiscountAmount
+          : loyaltyDiscountApplied.discountValue
+      );
+    }
+
+    await logPricingAudit({
+      userId,
+      bookingId: newBooking._id,
+      packageId: packageData?._id,
+      tourId: tourData?._id,
+      baseAmount: dynamicPricing.baseAmount,
+      finalAmount: newBooking.finalAmount,
+      breakdown: pricingBreakdown,
+      appliedRuleIds: dynamicPricing.appliedRuleIds,
+      context: dynamicPricing.meta,
+    });
+
     const bookings = [newBooking];
 
-    // Final Amount
+    // Final Amount (full booking value after tax)
     const finalTotalAmount = bookings.reduce(
       (sum, b) => sum + b.finalAmount,
       0
     );
 
+    const razorpayChargeAmount = paymentPlan === "advance"
+      ? roundCurrency(finalTotalAmount * (paymentSplit.advancePercent / 100))
+      : finalTotalAmount;
+
     const razorpayOrderOptions = {
-      amount: Math.round(finalTotalAmount * 100),
+      amount: Math.round(razorpayChargeAmount * 100),
       currency: "INR",
       receipt: `receipt_${Date.now()}`,
       notes: {
@@ -288,23 +406,26 @@ const createBookingsFromCart = async (req, res) => {
       },
     };
 
-    // MOCK PAYMENT: skip live Razorpay when MOCK_PAYMENT=true or keys are missing
-    let razorpayOrder;
-    if (isMockPaymentEnabled()) {
-      razorpayOrder = {
-        id: `order_mock_${Date.now()}`,
-        amount: razorpayOrderOptions.amount,
-        currency: razorpayOrderOptions.currency,
-      };
-    } else {
-      razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
-    }
+    const {
+      order: razorpayOrder,
+      mockPayment: usedMockPayment,
+      razorpayFallback,
+    } = await createRazorpayOrderSafe(razorpay, razorpayOrderOptions);
 
     const newOrder = new orderModel({
       userId,
       bookingIds: bookings.map(b => b.bookingId),
-      totalAmount: finalTotalAmount,
+      totalAmount: razorpayChargeAmount,
       orderId: razorpayOrder.id,
+      paymentPlan: paymentSplit.paymentPlan,
+      advanceAmount: paymentPlan === "advance" ? razorpayChargeAmount : finalTotalAmount,
+      remainingAmount: paymentPlan === "advance"
+        ? roundCurrency(finalTotalAmount - razorpayChargeAmount)
+        : 0,
+      meta: {
+        fullBookingAmount: finalTotalAmount,
+        paymentPlan: paymentSplit.paymentPlan,
+      },
     });
 
     await newOrder.save(saveOptions(session));
@@ -318,29 +439,59 @@ const createBookingsFromCart = async (req, res) => {
     await commitOptionalSession(session);
     session = null;
 
+    const paymentMessage = razorpayFallback
+      ? "Bookings created. Razorpay keys are invalid — using test payment mode."
+      : usedMockPayment
+        ? "Bookings created. Proceed with test payment."
+        : "Bookings created. Please proceed to payment.";
+
     return res.status(201).json({
       success: true,
-      message: "Bookings created. Please proceed to payment.",
+      message: paymentMessage,
       orderId: newOrder.orderId,
       bookingIds: newOrder.bookingIds,
-      totalAmount: newOrder.totalAmount,
-      mockPayment: isMockPaymentEnabled(),
+      totalAmount: finalTotalAmount,
+      payableAmount: razorpayChargeAmount,
+      advanceAmount: paymentPlan === "advance" ? razorpayChargeAmount : null,
+      remainingAmount: paymentPlan === "advance" ? newOrder.remainingAmount : 0,
+      paymentPlan: paymentSplit.paymentPlan,
+      pricingBreakdown,
+      loyaltyDiscountApplied: loyaltyDiscountApplied
+        ? {
+            discountType: loyaltyDiscountApplied.discountType,
+            discountValue: loyaltyDiscountApplied.discountValue,
+            amount: loyaltyDiscountAmount,
+          }
+        : null,
+      mockPayment: usedMockPayment,
+      razorpayFallback: Boolean(razorpayFallback),
       razorpayOrder: {
         id: razorpayOrder.id,
         amount: razorpayOrder.amount,
         currency: razorpayOrder.currency,
       },
-      razorpayKeyId: isMockPaymentEnabled() ? null : process.env.RAZORPAY_KEY_ID,
+      razorpayKeyId: usedMockPayment ? null : process.env.RAZORPAY_KEY_ID || null,
+      testMode: process.env.RAZORPAY_KEY_ID?.startsWith("rzp_test_") ?? false,
     });
 
   } catch (error) {
     await abortOptionalSession(session);
     console.error("Error creating bookings:", error);
 
-    return res.status(500).json({
+    const razorpayMessage = error?.error?.description || error?.message;
+    const isRazorpayError =
+      error?.statusCode === 401 || error?.error?.code === "BAD_REQUEST_ERROR";
+
+    const isValidationError = error?.name === "ValidationError";
+
+    return res.status(isValidationError ? 400 : isRazorpayError ? 502 : 500).json({
       success: false,
-      message: "Failed to create bookings",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+      message: isRazorpayError
+        ? `Payment gateway error: ${razorpayMessage || "Razorpay authentication failed"}`
+        : isValidationError
+          ? error.message
+          : "Failed to create bookings",
+      error: process.env.NODE_ENV === "development" ? razorpayMessage : undefined,
     });
   }
 };
@@ -354,15 +505,13 @@ const createBookingsFromCart = async (req, res) => {
 //     //  console.log("verify payment",orderId)
 //     session.startTransaction();
 
-//     const order = await orderModel
 //       .findOne({ orderId: razorpay_order_id })
-//       .session(session);
 //     // if (!order || order.orderStatus !== 'Pending') {
 //     //     await session.abortTransaction();
 //     //     session.endSession();
-//     //     return res.status(400).json({
-//     //         success: false,
-//     //         message: "Invalid order"
+//     //     return res.status(404).json({
+//     //       success: false,
+//     //       message: "Failed to create bookings",
 //     //     });
 //     // }
 //     const valid = verifyPayment(
@@ -852,7 +1001,12 @@ const confirmPayment = async (req, res) => {
   let session = null;
   try {
     session = await startOptionalSession();
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+    const {
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+      paymentMethod: clientPaymentMethod,
+    } = req.body;
     const order = await applySession(
       orderModel.findOne({ orderId: razorpay_order_id }),
       session
@@ -882,27 +1036,54 @@ const confirmPayment = async (req, res) => {
       });
     }
 
-    // MOCK PAYMENT: skip live Razorpay fetch (commented — use mock method in dev)
-    // const payment = await razorpay.payments.fetch(razorpay_payment_id);
-    const payment = {
-      method: isMockPaymentEnabled() ? "Mock UPI" : "online",
-      amount: Math.round(order.totalAmount * 100),
-    };
+    let rawPaymentMethod = clientPaymentMethod || "online";
+    let paymentAmount = Math.round(order.totalAmount * 100);
+
+    if (!isMockPaymentEnabled()) {
+      try {
+        const fetched = await razorpay.payments.fetch(razorpay_payment_id);
+        rawPaymentMethod = fetched.method || rawPaymentMethod;
+        paymentAmount = fetched.amount || paymentAmount;
+      } catch (fetchErr) {
+        console.warn("[confirmPayment] Razorpay fetch failed, using defaults:", fetchErr.message);
+      }
+    }
+
+    const orderPaymentMethod = normalizeOrderPaymentMethod(rawPaymentMethod);
+    const bookingPaymentMethod = normalizeBookingPaymentMethod(rawPaymentMethod);
+
     order.orderStatus = "Paid";
     order.paymentStatus = "Completed";
     order.transactionId = razorpay_payment_id;
-    order.paymentMethod = payment.method;
+    order.paymentMethod = orderPaymentMethod;
     await order.save(saveOptions(session));
 
+    const isAdvancePayment = order.paymentPlan === "advance" || order.meta?.paymentPlan === "advance";
+    const fullBookingAmount = order.meta?.fullBookingAmount || order.totalAmount;
+    const paidNow = order.totalAmount;
+
     // ── Update Bookings ───────────────────────────────────────
+    const bookingUpdate = {
+      transactionId: razorpay_payment_id,
+      paymentMethod: bookingPaymentMethod,
+    };
+
+    if (isAdvancePayment) {
+      bookingUpdate.paymentStatus = "Partial";
+      bookingUpdate.bookingStatus = "Confirmed";
+      bookingUpdate.advancePaid = paidNow;
+      bookingUpdate.remainingAmount = order.remainingAmount || Math.max(fullBookingAmount - paidNow, 0);
+      bookingUpdate.paymentPlan = "advance";
+    } else {
+      bookingUpdate.paymentStatus = "Paid";
+      bookingUpdate.bookingStatus = "Confirmed";
+      bookingUpdate.advancePaid = paidNow;
+      bookingUpdate.remainingAmount = 0;
+    }
+
     await bookingModel.updateMany(
       { bookingId: { $in: order.bookingIds } },
-      {
-        paymentStatus: "Paid",
-        bookingStatus: "Confirmed",
-        transactionId: razorpay_payment_id,
-        paymentMethod: payment.method,
-      },
+      bookingUpdate,
       saveOptions(session)
     );
 
@@ -999,6 +1180,20 @@ const confirmPayment = async (req, res) => {
               bookingId: booking._id,
               createdBy: booking.assignedAgent
             }], saveOptions(session));
+
+            const agentUserId = booking.assignedAgent;
+            const commissionAmount = agentCommissionAmount;
+            const bookingRef = booking.bookingId;
+            setImmediate(() => {
+              const { notifyUser, formatInr } = require("../services/notificationDispatchService");
+              notifyUser(agentUserId, {
+                title: "Commission Credited",
+                message: `${formatInr(commissionAmount)} commission credited for booking ${bookingRef}.`,
+                type: "reward",
+                redirectScreen: "CommissionHistory",
+                meta: { bookingId: bookingRef },
+              }).catch((err) => console.error("[Notify] Agent commission:", err.message));
+            });
           }
         }
 
@@ -1045,10 +1240,36 @@ const confirmPayment = async (req, res) => {
     await commitOptionalSession(session);
     session = null;
 
+    // Record payment history (non-blocking)
+    setImmediate(async () => {
+      try {
+        const bookings = await bookingModel.find({ bookingId: { $in: order.bookingIds } });
+        for (const booking of bookings) {
+          await recordPaymentHistory({
+            userId: order.userId,
+            bookingId: booking._id,
+            bookingRef: booking.bookingId,
+            orderId: order.orderId,
+            amount: paidNow,
+            paymentType: isAdvancePayment ? "advance" : "full",
+            paymentMethod: bookingPaymentMethod,
+            transactionId: razorpay_payment_id,
+            status: "Completed",
+          });
+        }
+      } catch (err) {
+        console.error("[confirmPayment] Payment history error:", err.message);
+      }
+    });
+
     res.status(200).json({
       success: true,
-      message: "Payment confirmed!",
+      message: isAdvancePayment
+        ? "Advance payment confirmed! Remaining balance is due before travel."
+        : "Payment confirmed!",
       order,
+      paymentStatus: isAdvancePayment ? "Partial Paid" : "Fully Paid",
+      remainingAmount: isAdvancePayment ? (order.remainingAmount || 0) : 0,
     });
 
     setImmediate(async () => {
@@ -1079,53 +1300,18 @@ const confirmPayment = async (req, res) => {
             continue;
           }
 
-          // 1. Invoice — separate try-catch, agar fail ho toh bhi baaki chalein
-          let invoiceUrl = null;
           try {
-            console.log(`[Background] 📄 Generating invoice for ${booking.bookingId}...`);
-
-            // 60 sec timeout — puppeteer hang na kare
-            const invoicePromise = invoiceService.generateInvoice(booking);
-            const timeoutPromise = new Promise((_, reject) =>
-              setTimeout(() => reject(new Error("Invoice generation timed out after 60s")), 60000)
-            );
-
-            invoiceUrl = await Promise.race([invoicePromise, timeoutPromise]);
-            booking.invoiceUrl = invoiceUrl;
-            await booking.save();
-            console.log(`[Background] ✅ Invoice: ${invoiceUrl}`);
-          } catch (invoiceErr) {
-            console.error(`[Background] ❌ Invoice failed for ${booking.bookingId}:`, invoiceErr.message);
+            const { creditGuideCommissionForBooking } = require("../services/guideCommissionService");
+            await creditGuideCommissionForBooking(booking._id, { trigger: "payment" });
+          } catch (commissionErr) {
+            console.error(`[Background] Guide commission error for ${booking.bookingId}:`, commissionErr.message);
           }
 
-          // 2. WA + SMS + Email — parallel (invoice ho ya na ho)
           try {
-            console.log(`[Background] 📤 Sending WA/SMS/Email for ${booking.bookingId}...`);
-            const [wa, sms, email] = await Promise.allSettled([
-              booking.mobileNumber
-                ? sendBookingWhatsApp(booking.mobileNumber, booking.customerName, booking.bookingId, booking.invoiceNumber, invoiceUrl || "")
-                : Promise.resolve("no mobile"),
-
-              booking.mobileNumber
-                ? sendBookingSMS(booking.mobileNumber, booking.customerName, booking.bookingId, invoiceUrl || "")
-                : Promise.resolve("no mobile"),
-
-              booking.email
-                ? emailService.sendPaymentSuccessEmail(booking.email, booking, invoiceUrl || "")
-                : Promise.resolve("no email"),
-            ]);
-
-            console.log(`[Background] ✅ ${booking.bookingId} — WA: ${wa.status}${wa.reason ? ' (' + wa.reason + ')' : ''} | SMS: ${sms.status}${sms.reason ? ' (' + sms.reason + ')' : ''} | Email: ${email.status}${email.reason ? ' (' + email.reason + ')' : ''}`);
-
-            // 3. Itinerary email separately
-            if (booking.email && booking.bookingType === "Package Tour" && booking.selectedPackageId) {
-              console.log(`[Background] 📤 Sending itinerary email to ${booking.email}...`);
-              await emailService.sendItineraryEmail(booking.email, booking);
-              console.log(`[Background] ✅ Itinerary email sent`);
-            }
-
+            const notifyResults = await sendBookingConfirmationNotifications(booking);
+            console.log(`[Background] Notifications for ${booking.bookingId}:`, notifyResults);
           } catch (notifyErr) {
-            console.error(`[Background] ❌ Notification error for ${booking.bookingId}:`, notifyErr.message, notifyErr.stack);
+            console.error(`[Background] Notification error for ${booking.bookingId}:`, notifyErr.message, notifyErr.stack);
           }
         }
 
@@ -1235,7 +1421,7 @@ const confirmAgentPayment = async (req, res) => {
     await agent.save({ session });
 
     // const payment = await razorpay.payments.fetch(razorpay_payment_id);
-    const payment = { method: "Mock UPI", amount: 100000 }; // 1000 INR default in cents
+    const payment = { method: "upi", amount: 100000 }; // 1000 INR default in cents
 
     await Transaction.create([{
       userId: agent.userId,
@@ -1356,7 +1542,7 @@ const confirmAgentPaymentDynamic = async (req, res) => {
     await agent.save({ session });
 
     // const payment = await razorpay.payments.fetch(razorpay_payment_id);
-    const payment = { method: "Mock UPI", amount: 100000 }; // 1000 INR default in cents
+    const payment = { method: "upi", amount: 100000 }; // 1000 INR default in cents
 
     const distributor = agent.createdBy
       ? await userModel.findById(agent.createdBy).session(session)
@@ -1422,9 +1608,39 @@ const getAgentPaidTransactions = async (req, res) => {
 };
 
 
+const getRazorpayConfig = async (req, res) => {
+  try {
+    const keyId = process.env.RAZORPAY_KEY_ID;
+    if (!keyId) {
+      return res.status(503).json({
+        success: false,
+        message: "Razorpay keys are not configured on the server",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        keyId,
+        currency: "INR",
+        testMode: keyId.startsWith("rzp_test_"),
+        mockPayment: isMockPaymentEnabled(),
+        companyName: "Zunjarrao Yatra",
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching Razorpay config:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load Razorpay configuration",
+    });
+  }
+};
+
 module.exports = {
   createBookingsFromCart,
   confirmPayment,
+  getRazorpayConfig,
   webhook,
   createAgentPaidOrder,
   confirmAgentPayment,

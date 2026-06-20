@@ -202,6 +202,38 @@ const bookingSchema = new mongoose.Schema(
       type: Number,
       min: 0,
     },
+    advancePaid: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    remainingAmount: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    paymentPlan: {
+      type: String,
+      enum: ["full", "advance"],
+      default: "full",
+    },
+    pricingBreakdown: [
+      {
+        label: { type: String, trim: true },
+        amount: { type: Number },
+        type: { type: String, trim: true },
+        ruleId: { type: mongoose.Schema.Types.ObjectId, ref: "PricingRule" },
+      },
+    ],
+    loyaltyDiscountApplied: {
+      type: Boolean,
+      default: false,
+    },
+    loyaltyDiscountAmount: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
     gstNumber: {
       type: String,
       trim: true,
@@ -255,6 +287,13 @@ const bookingSchema = new mongoose.Schema(
     notes: {
       type: String,
       trim: true,
+    },
+    cancellationReason: {
+      type: String,
+      trim: true,
+    },
+    cancelledAt: {
+      type: Date,
     },
     documents: {
       type: [documentSchema],
@@ -322,7 +361,22 @@ function computeAmounts(doc) {
   const total = adults * costPerPerson + children * childCost + addOnsTotal;
 
   const discount = doc.discountAmount || 0;
-  const subtotal = total ? Math.max(total - discount, 0) : doc.finalAmount;
+
+  // Include dynamic pricing surcharges from breakdown (weekend, festival, demand, etc.)
+  const dynamicSurcharge = (doc.pricingBreakdown || [])
+    .filter((item) => item.type && item.type !== "base" && item.type !== "loyalty" && item.amount > 0)
+    .reduce((sum, item) => sum + (item.amount || 0), 0);
+
+  const loyaltyCredit = Math.abs(
+    (doc.pricingBreakdown || [])
+      .filter((item) => item.type === "loyalty")
+      .reduce((sum, item) => sum + (item.amount || 0), 0)
+  );
+
+  const effectiveDiscount = discount + loyaltyCredit;
+  const subtotal = total
+    ? Math.max(total + dynamicSurcharge - effectiveDiscount, 0)
+    : doc.finalAmount;
 
   doc.totalAmount = total || 0;
 

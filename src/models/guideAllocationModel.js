@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 
-const assignmentStatuses = ["Pending", "Active", "Completed", "Cancelled"];
+const assignmentStatuses = ["Pending", "Active", "Paused", "Completed", "Cancelled"];
 const assignmentTypes = ["Tour", "Booking"];
 
 const transferSchema = new mongoose.Schema(

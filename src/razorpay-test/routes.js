@@ -11,4 +11,7 @@ router.post('/create-order', controller.createOrder);
 // Verify payment
 router.post('/verify', controller.verifyPayment);
 
+// Complete CRM/agent booking test payment by MongoDB booking _id
+router.post('/complete-booking-payment', controller.completeBookingPayment);
+
 module.exports = router;

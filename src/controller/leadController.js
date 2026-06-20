@@ -1,4 +1,138 @@
-const { leadModel } = require("../models/leadModel");
+const { leadModel, leadSources, leadStatuses, interestedServices } = require("../models/leadModel");
+const cityModel = require("../models/cityModel");
+const { packageModel } = require("../models/packageModel");
+
+const TOUR_INTEREST_META = {
+  "Tour Package": {
+    label: "Package Tour",
+    subtitle: "Holiday & family tour packages",
+    icon: "package",
+  },
+  "Group Tour": {
+    label: "Bus Tour",
+    subtitle: "Religious & City bus tours",
+    icon: "bus",
+  },
+};
+
+const LEAD_STATUS_LABELS = {
+  New: "New",
+  Qualified: "Interested",
+  "Follow Up": "Follow-up",
+};
+
+const DEFAULT_BUDGET_RANGES = [
+  { id: "under10k", label: "Under ₹10k", min: 0, max: 10000 },
+  { id: "10k-20k", label: "₹10k - ₹20k", min: 10000, max: 20000 },
+  { id: "20k-50k", label: "₹20k - ₹50k", min: 20000, max: 50000 },
+  { id: "above50k", label: "Above ₹50k", min: 50000, max: 500000 },
+];
+
+function formatInr(amount) {
+  return Number(amount || 0).toLocaleString("en-IN");
+}
+
+function buildTravelMonths(count = 12) {
+  const months = [];
+  const now = new Date();
+
+  for (let i = 0; i < count; i += 1) {
+    const date = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    const label = date.toLocaleString("en-IN", { month: "long", year: "numeric" });
+    months.push(label);
+  }
+
+  return months;
+}
+
+function buildBudgetRanges(packages = []) {
+  const prices = packages
+    .map((pkg) => Number(pkg.basePricePerPerson))
+    .filter((price) => Number.isFinite(price) && price > 0)
+    .sort((a, b) => a - b);
+
+  if (!prices.length) {
+    return DEFAULT_BUDGET_RANGES;
+  }
+
+  const min = prices[0];
+  const max = prices[prices.length - 1];
+
+  if (min === max) {
+    return [{ id: "single-range", label: `Around ₹${formatInr(min)}`, min, max }];
+  }
+
+  const step = Math.ceil((max - min) / 4);
+  const buckets = [];
+  let start = min;
+
+  for (let i = 0; i < 4 && start <= max; i += 1) {
+    const end = i === 3 ? max : Math.min(start + step, max);
+    const id = `range-${i}`;
+    let label;
+
+    if (i === 0) {
+      label = `Under ₹${formatInr(end)}`;
+    } else if (i === 3) {
+      label = `Above ₹${formatInr(start)}`;
+    } else {
+      label = `₹${formatInr(start)} - ₹${formatInr(end)}`;
+    }
+
+    buckets.push({
+      id,
+      label,
+      min: Math.floor(start),
+      max: Math.ceil(end),
+    });
+    start = end;
+  }
+
+  return buckets;
+}
+
+function buildTravelerTypes(packages = []) {
+  const adultPrices = packages
+    .map((pkg) => Number(pkg.basePricePerPerson))
+    .filter((price) => Number.isFinite(price) && price > 0);
+  const childPrices = packages
+    .map((pkg) => Number(pkg.childPrice ?? pkg.basePricePerPerson))
+    .filter((price) => Number.isFinite(price) && price >= 0);
+
+  const avgAdult = adultPrices.length
+    ? Math.round(adultPrices.reduce((sum, price) => sum + price, 0) / adultPrices.length)
+    : 0;
+  const avgChild = childPrices.length
+    ? Math.round(childPrices.reduce((sum, price) => sum + price, 0) / childPrices.length)
+    : 0;
+
+  return [
+    {
+      key: "adults",
+      label: "Adult",
+      ageHint: "14+ years",
+      pricePerPerson: avgAdult,
+      min: 1,
+      max: 50,
+    },
+    {
+      key: "children",
+      label: "Children",
+      ageHint: "Below 13",
+      pricePerPerson: avgChild,
+      min: 0,
+      max: 50,
+    },
+    {
+      key: "infants",
+      label: "Infants",
+      ageHint: "Below 2",
+      pricePerPerson: 0,
+      min: 0,
+      max: 10,
+    },
+  ];
+}
 
 class LeadController {
   constructor(model = leadModel) {
@@ -62,6 +196,48 @@ class LeadController {
 
   async deleteLead(id) {
     return this.model.findByIdAndDelete(id);
+  }
+
+  async getLeadFormMeta() {
+    const [cities, packages] = await Promise.all([
+      cityModel
+        .find({ isDisabled: { $ne: true } })
+        .select("cityName")
+        .sort({ cityName: 1 })
+        .lean(),
+      packageModel
+        .find({ isDisabled: { $ne: true }, status: "Active" })
+        .select("basePricePerPerson childPrice")
+        .lean(),
+    ]);
+
+    const destinations = cities.map((city) => city.cityName).filter(Boolean);
+
+    const tourInterestOptions = interestedServices
+      .filter((service) => TOUR_INTEREST_META[service])
+      .map((service) => ({
+        id: service,
+        service,
+        label: TOUR_INTEREST_META[service].label,
+        subtitle: TOUR_INTEREST_META[service].subtitle,
+        icon: TOUR_INTEREST_META[service].icon,
+      }));
+
+    const leadStatusPills = leadStatuses
+      .filter((status) => LEAD_STATUS_LABELS[status])
+      .map((id) => ({ id, label: LEAD_STATUS_LABELS[id] }));
+
+    return {
+      leadSources,
+      leadStatuses,
+      interestedServices,
+      destinations,
+      travelMonths: buildTravelMonths(12),
+      budgetRanges: buildBudgetRanges(packages),
+      travelerTypes: buildTravelerTypes(packages),
+      tourInterestOptions,
+      leadStatusPills,
+    };
   }
 
   async exportLeadsExcel(req, res) {

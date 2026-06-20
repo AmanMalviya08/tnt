@@ -45,6 +45,25 @@ const orderSchema = new mongoose.Schema({
   },
   cancellationReason: {
     type: String
+  },
+  paymentPlan: {
+    type: String,
+    enum: ['full', 'advance', 'balance'],
+    default: 'full'
+  },
+  advanceAmount: {
+    type: Number,
+    min: 0,
+    default: 0
+  },
+  remainingAmount: {
+    type: Number,
+    min: 0,
+    default: 0
+  },
+  meta: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
   }
 }, { timestamps: true });
 

@@ -1,8 +1,31 @@
+const fs = require("fs");
 const puppeteer = require("puppeteer-core");
 const InvoiceHelper = require("../utils/invoiceHelper");
 const { s3Client } = require("../middleware/s3Upload");
 const { PutObjectCommand, DeleteObjectCommand } = require("@aws-sdk/client-s3");
 const { pdfLogger, elapsedMs } = require("../utils/logger");
+
+function resolveChromiumPath() {
+  if (process.env.CHROMIUM_PATH && fs.existsSync(process.env.CHROMIUM_PATH)) {
+    return process.env.CHROMIUM_PATH;
+  }
+
+  const candidates =
+    process.platform === "win32"
+      ? [
+          "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+          "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+          "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+        ]
+      : [
+          "/usr/bin/chromium-browser",
+          "/usr/bin/chromium",
+          "/usr/bin/google-chrome",
+          "/snap/bin/chromium",
+        ];
+
+  return candidates.find((p) => fs.existsSync(p)) || process.env.CHROMIUM_PATH;
+}
 
 class InvoiceService {
   constructor() {
@@ -80,7 +103,7 @@ class InvoiceService {
       });
 
       browser = await puppeteer.launch({
-        executablePath: process.env.CHROMIUM_PATH || "/usr/bin/chromium-browser",
+        executablePath: resolveChromiumPath(),
         headless: true,
         args: [
           "--no-sandbox",

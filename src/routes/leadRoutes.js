@@ -1,13 +1,26 @@
 const express = require("express");
 const LeadController = require("../controller/leadController");
-const { leadModel, leadSources, leadStatuses, interestedServices } = require("../models/leadModel");
+const { leadModel } = require("../models/leadModel");
+const { notifyLeadCreated, notifyLeadUpdated } = require("../services/leadNotificationService");
 
 const router = express.Router();
 const leadController = new LeadController(leadModel);
 
+router.get("/meta/enums", async (req, res) => {
+  try {
+    const data = await leadController.getLeadFormMeta();
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 router.post("/", async (req, res) => {
   try {
     const lead = await leadController.createLead(req.body);
+    setImmediate(() => {
+      notifyLeadCreated(lead).catch((err) => console.error("[Notify] Lead created:", err.message));
+    });
     res.status(201).json({ success: true, message: "Lead created successfully", data: lead });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
@@ -51,10 +64,16 @@ router.get("/:id", async (req, res) => {
 
 router.put("/:id", async (req, res) => {
   try {
+    const existing = await leadModel.findById(req.params.id).select("followUpDate");
     const lead = await leadController.updateLead(req.params.id, req.body);
     if (!lead) {
       return res.status(404).json({ success: false, message: "Lead not found" });
     }
+    setImmediate(() => {
+      notifyLeadUpdated(lead, { previousFollowUpDate: existing?.followUpDate }).catch(
+        (err) => console.error("[Notify] Lead updated:", err.message)
+      );
+    });
     res.status(200).json({ success: true, message: "Lead updated successfully", data: lead });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
@@ -71,12 +90,6 @@ router.delete("/:id", async (req, res) => {
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
-});
-
-router.get("/meta/enums", (req, res) => {
-  res
-    .status(200)
-    .json({ success: true, data: { leadSources, leadStatuses, interestedServices } });
 });
 
 module.exports = router;

@@ -2,6 +2,7 @@ const { default: mongoose } = require("mongoose");
 const Guide = require("../models/guideModel");
 const reviewModel = require("../models/reviewModel");
 const { userModel } = require("../models/userModel");
+const { notifyUser } = require("../services/notificationDispatchService");
 const DEFAULT_PAGE_SIZE = parseInt(process.env.DEFAULT_PAGE_SIZE || "20", 10);
 
 class GuideController {
@@ -77,12 +78,18 @@ class GuideController {
 
         // Build documents object from uploaded file URLs or body payload
         const now = new Date();
+        const isAdminCreated = Boolean(createdBy);
         const docFields = ['passportImage', 'guideLicenseImage', 'aidCertificateImage', 'proofOfAddressImage'];
         const docsPayload = {};
         for (const field of docFields) {
             const url = documents?.[field] || null;
             if (url) {
-                docsPayload[field] = { url, status: 'Pending', remarks: null, uploadedAt: now };
+                docsPayload[field] = {
+                    url,
+                    status: isAdminCreated ? 'Approved' : 'Pending',
+                    remarks: null,
+                    uploadedAt: now
+                };
             }
         }
 
@@ -113,9 +120,18 @@ class GuideController {
             availability,
             performance,
             gender,
-            status: status || 'Pending',
+            status: isAdminCreated ? (status || 'Active') : (status || 'Pending'),
             createdBy,
-            documents: docsPayload
+            documents: docsPayload,
+            documentVerification: isAdminCreated
+                ? {
+                    status: 'Verified',
+                    verifiedBy: createdBy,
+                    verifiedAt: now,
+                    remarks: 'Auto-verified — registered by admin'
+                }
+                : { status: 'Pending' },
+            ...(isAdminCreated && { verificationDate: now })
         });
 
         if (newGuide && newGuide.userId) {
@@ -128,6 +144,18 @@ class GuideController {
                 await userModel.findByIdAndUpdate(newGuide.userId, userUpdatePayload, {
                     new: true,
                     runValidators: true,
+                });
+            }
+
+            if (isAdminCreated) {
+                setImmediate(() => {
+                    notifyUser(newGuide.userId, {
+                        title: "Welcome, Tour Guide!",
+                        message: "Your account is ready. Login with your phone number to view assigned tours.",
+                        type: "system",
+                        redirectScreen: "Home",
+                        meta: { verificationStatus: "Verified" },
+                    }).catch((err) => console.error("[Notify] Guide welcome:", err.message));
                 });
             }
         }
@@ -193,6 +221,10 @@ class GuideController {
 
         const query = this.model
             .find(normalizedFilter)
+            .populate({
+                path: 'createdBy',
+                select: 'firstName lastName fullName role email'
+            })
             .sort({ [sortBy]: sortOrder })
             .skip((currentPage - 1) * pageSize)
             .limit(pageSize)
@@ -232,6 +264,33 @@ class GuideController {
         }
 
         return guide;
+    }
+
+    async upsertGuideForUser(userId, updateData = {}, updatedBy) {
+        let guide = await this.model.findOne({ userId });
+        if (!guide) {
+            const user = await userModel.findById(userId);
+            if (!user || user.role !== 'Guide') {
+                throw new Error('Guide profile not found for this user');
+            }
+            const fullName = updateData.fullName
+                || [user.firstName, user.lastName].filter(Boolean).join(' ')
+                || 'Guide User';
+            guide = await this.model.create({
+                userId,
+                fullName,
+                email: updateData.email || user.email,
+                phone: updateData.phone || user.phone,
+                gender: updateData.gender || 'Other',
+                profileImage: updateData.profileImage || null,
+                status: 'Pending',
+            });
+            if (updateData.documents || updateData.documentVerification) {
+                return this.updateGuide(guide._id, updateData, updatedBy);
+            }
+            return guide;
+        }
+        return this.updateGuide(guide._id, updateData, updatedBy);
     }
 
     async updateGuide(guideId, updateData, updatedBy) {
@@ -344,6 +403,25 @@ class GuideController {
         });
 
         await guide.save();
+
+        if (guide.userId) {
+            setImmediate(() => {
+                notifyUser(guide.userId, {
+                    title: "New Complaint Received",
+                    message: subject
+                        ? `A complaint has been filed against you: ${subject}`
+                        : "A new complaint has been filed against you. Please review it.",
+                    type: "system",
+                    redirectScreen: "Complaints",
+                    meta: {
+                        category: "complaint",
+                        complaintId: complaintId.toString(),
+                        guideId: guideId.toString(),
+                        severity,
+                    },
+                }).catch((err) => console.error("[Notify] Guide complaint:", err.message));
+            });
+        }
 
         return guide;
     }

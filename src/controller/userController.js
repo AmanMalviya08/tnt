@@ -1,7 +1,7 @@
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
-const { userModel } = require("../models/userModel");
+const { userModel, normalizeUserStatus } = require("../models/userModel");
 const { bookingModel } = require("../models/bookingModel");
 const Transaction = require("../models/transactionModel");
 const {
@@ -479,7 +479,7 @@ class UserController {
   }
 
   async getUserById(id) {
-    return this.model.findById(id).select("-password").populate("agents");
+    return this.model.findById(id).select("-password").populate("agents").populate("guides");
   }
 
   async updateUser(id, payload) {
@@ -577,7 +577,28 @@ class UserController {
     }
 
     let user = await this.model.findOne({ phone }).select("+phoneOtp.codeHash");
-    if (user && user.role !== role && user.isPhoneVerified) {
+
+    if (user?.isDisabled) {
+      user.isDisabled = false;
+      user.isPhoneVerified = false;
+      user.role = role;
+      user.phoneOtp = undefined;
+    }
+
+    if (user && user.role === "Agent" && role === "Traveler") {
+      try {
+        const { agentModel } = require("../models/agentModel");
+        const agentProfile = await agentModel.findOne({ userId: user._id }).select("isDisabled");
+        if (!agentProfile || agentProfile.isDisabled) {
+          user.role = "Traveler";
+          user.isPhoneVerified = false;
+        }
+      } catch (err) {
+        console.warn("[sendPhoneOtpByPhone] Agent lookup failed:", err.message);
+      }
+    }
+
+    if (user && user.role !== role && user.isPhoneVerified && !user.isDisabled) {
       throw new Error(
         `this number is login as ${user.role} please choose the ${user.role} `,
       );
@@ -587,6 +608,21 @@ class UserController {
         `this number is login as ${user.role} please use different number `,
       );
     }
+
+    if (role === "Guide") {
+      if (!user) {
+        throw new Error("Guide account not found. Please contact your administrator.");
+      }
+      const Guide = require("../models/guideModel");
+      const guideProfile = await Guide.findOne({ userId: user._id }).select("createdBy status");
+      if (!guideProfile) {
+        throw new Error("Guide profile not found. Please contact your administrator.");
+      }
+      if (!guideProfile.createdBy) {
+        throw new Error("Only admin-registered guides can access this app.");
+      }
+    }
+
     let created = false;
 
     if (!user) {
@@ -737,9 +773,11 @@ class UserController {
       if (user?.guides) {
         shouldCompleteProfile = false;
       }
-      if (user?.guides?.status === "Active") {
-        isVerified = true;
+      const guideProfile = user?.guides;
+      if (!guideProfile?.createdBy) {
+        throw new Error("Only admin-registered guides can access this app.");
       }
+      isVerified = true;
     } else {
       shouldCompleteProfile =
         !user.firstName || user.firstName === "Guest" || !user.email;

@@ -31,7 +31,20 @@
     <label><strong>Auth Token (Required for /verify API):</strong></label>
     <input type="text" id="token" placeholder="Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
     
-    <button id="checkoutBtn">Run Checkout Flow</button>
+    <button id="checkoutBtn">Run Traveler Checkout Flow</button>
+
+    <hr style="margin: 28px 0; border: none; border-top: 1px solid #ddd;" />
+
+    <h2>Agent CRM Booking — Test Payment</h2>
+    <p style="color: #666; font-size: 14px;">Mark an existing agent booking as <strong>Paid (Completed)</strong> using mock payment. Use MongoDB <code>_id</code> from booking list.</p>
+
+    <label><strong>Booking MongoDB _id:</strong></label>
+    <input type="text" id="bookingMongoId" placeholder="69bcf38ad9a4c371e2be1367">
+
+    <label><strong>Payment Method (optional):</strong></label>
+    <input type="text" id="testPayMethod" value="Online" placeholder="Online, Cash, UPI">
+
+    <button id="testPayBtn" style="background: #16a34a; margin-top: 8px;">Complete Test Payment</button>
 
     <pre id="logs">Ready to test...</pre>
 </div>
@@ -214,6 +227,44 @@
         
         rzp1.open();
     }
+
+    document.getElementById('testPayBtn').addEventListener('click', async () => {
+        const btn = document.getElementById('testPayBtn');
+        btn.disabled = true;
+        try {
+            const apiUrl = document.getElementById('apiUrl').value.trim().replace(/\/+$/, "");
+            const token = document.getElementById('token').value.trim();
+            const bookingId = document.getElementById('bookingMongoId').value.trim();
+            const paymentMethod = document.getElementById('testPayMethod').value.trim() || 'Online';
+
+            if (!token) throw new Error('Auth token required');
+            if (!bookingId) throw new Error('Booking MongoDB _id required');
+
+            log(`Calling POST /api/bookings/${bookingId}/test-payment ...`);
+
+            const res = await fetch(`${apiUrl}/bookings/${bookingId}/test-payment`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: token.startsWith('Bearer ') ? token : `Bearer ${token}`,
+                },
+                body: JSON.stringify({ paymentMethod }),
+            });
+
+            const data = await res.json();
+            if (res.ok && data.success) {
+                log('✅ Test payment completed!');
+                log('Payment Status: ' + (data.paymentStatus || data.data?.paymentStatus));
+                log(JSON.stringify(data, null, 2));
+            } else {
+                log('❌ Failed: ' + JSON.stringify(data, null, 2));
+            }
+        } catch (err) {
+            log('❌ Error: ' + err.message);
+        } finally {
+            btn.disabled = false;
+        }
+    });
 </script>
 
 </body>

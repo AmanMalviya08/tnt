@@ -164,6 +164,14 @@ class TourController {
       cleanFilter.cityId = { $in: cityIds };
     }
 
+    const includeDisabled =
+      options.includeDisabled === true || options.includeDisabled === "true";
+    if (!includeDisabled && cleanFilter.isDisabled === undefined) {
+      cleanFilter.isDisabled = false;
+      cleanFilter.isActive = true;
+      cleanFilter.status = { $nin: ["Draft", "Cancelled", "Completed"] };
+    }
+
     let query = this.model.find(cleanFilter);
 
     // Populate cityId with country/state filter

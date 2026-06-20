@@ -48,6 +48,43 @@ exports.createOrder = async (req, res) => {
     }
 };
 
+exports.completeBookingPayment = async (req, res) => {
+    try {
+        const { bookingId, paymentMethod = "Online" } = req.body;
+        if (!bookingId) {
+            return res.status(400).json({ success: false, message: "bookingId is required" });
+        }
+
+        const BookingController = require("../controller/bookingController");
+        const { bookingModel } = require("../models/bookingModel");
+        const bookingController = new BookingController(bookingModel);
+
+        const booking = await bookingController.completeTestPayment(bookingId, {
+            paymentMethod,
+            transactionId: `pay_mock_${Date.now()}`,
+        });
+
+        if (!booking) {
+            return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        console.log("✅ Mock Environment - Booking payment completed:", booking.bookingId);
+
+        return res.status(200).json({
+            success: true,
+            message: "Booking test payment completed",
+            data: booking,
+            paymentStatus: "Paid",
+        });
+    } catch (error) {
+        console.error("Mock Environment - completeBookingPayment error:", error);
+        return res.status(error.code === "ALREADY_PAID" ? 400 : 500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
+
 exports.verifyPayment = (req, res) => {
     try {
         const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;

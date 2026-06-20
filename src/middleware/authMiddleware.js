@@ -54,11 +54,18 @@ const routePermissions = [
     { path: '/api/guide-allocations/', method: 'POST', roles: ['Admin', 'SubAdmin'], exact: true },
     { path: '/api/guide-allocations/', method: 'GET', roles: ['Admin', 'SubAdmin'], exact: true },
     { path: '/api/guide-allocations/my-allocations', method: 'GET', roles: ['Admin', 'SubAdmin', 'Guide'], exact: true },
+    { path: '/api/guide-allocations/my-history', method: 'GET', roles: ['Admin', 'SubAdmin', 'Guide'], exact: true },
     { path: '/api/guide-allocations/:id', method: 'GET', roles: ['Admin', 'SubAdmin', "Agent","Guide"] },
     { path: '/api/guide-allocations/:id', method: 'PUT', roles: ['Admin', 'SubAdmin'] },
     { path: '/api/guide-allocations/:id', method: 'DELETE', roles: ['Admin', 'SubAdmin'] },
     { path: '/api/guide-allocations/:id/transfer', method: 'POST', roles: ['Admin', 'SubAdmin'] },
     { path: '/api/guide-allocations/:id/status', method: 'PATCH', roles: ['Admin', 'SubAdmin', 'Guide'] },
+    { path: '/api/guide-allocations/:id/itinerary/:dayNumber', method: 'PATCH', roles: ['Admin', 'SubAdmin', 'Guide'] },
+
+    // guide tour logs
+    { path: '/api/guide/tour-logs/my-logs', method: 'GET', roles: ['Guide'], exact: true },
+    { path: '/api/guide/tour-logs', method: 'POST', roles: ['Guide'], exact: true },
+    { path: '/api/guide/tour-logs/:id', method: 'DELETE', roles: ['Guide'] },
 
     //complaints
     { path: '/api/complaints/', method: 'POST', roles: ['Admin', 'SubAdmin', 'Traveler', 'Agent', 'Guide'], exact: true },
@@ -125,6 +132,7 @@ const routePermissions = [
     { path: '/api/bookings/', method: 'GET', roles: ['Admin', 'SubAdmin', 'Agent'], exact: true },
     { path: '/api/bookings/user', method: 'GET', roles: ['Admin', 'SubAdmin', 'Traveler', 'Agent'], exact: true },
     { path: '/api/bookings/:id', method: 'PUT', roles: ['Admin', 'SubAdmin', 'Agent'] },
+    { path: '/api/bookings/:id/test-payment', method: 'POST', roles: ['Admin', 'SubAdmin', 'Agent'] },
     { path: '/api/bookings/:id', method: 'DELETE', roles: ['Admin', 'SubAdmin'] },
     { path: '/api/bookings/:id/disable', method: 'PATCH', roles: ['Admin', 'SubAdmin'] },
 
@@ -161,6 +169,27 @@ const routePermissions = [
     { path: '/api/rewards/claim', method: 'POST', roles: ['Agent'], exact: true },
     { path: '/api/rewards/history', method: 'GET', roles: ['Agent'], exact: true },
     { path: '/api/rewards/', method: 'GET', roles: ['Admin', 'SubAdmin'], exact: true },
+
+    // yatra loyalty (travelers)
+    { path: '/api/yatra-loyalty/status', method: 'GET', roles: ['Traveler', 'Admin', 'SubAdmin'], exact: true },
+    { path: '/api/yatra-loyalty/check-discount', method: 'GET', roles: ['Traveler', 'Admin', 'SubAdmin'], exact: true },
+    { path: '/api/yatra-loyalty/history', method: 'GET', roles: ['Traveler', 'Admin', 'SubAdmin'], exact: true },
+    { path: '/api/yatra-loyalty/', method: 'GET', roles: ['Admin', 'SubAdmin'], exact: true },
+
+    // aadhaar, pricing, partial payment, locale
+    { path: '/api/aadhaar/verify', method: 'POST', roles: ['Traveler', 'Agent', 'Admin', 'SubAdmin', 'Guide'], exact: true },
+    { path: '/api/pricing/calculate', method: 'POST', roles: ['Traveler', 'Agent', 'Admin', 'SubAdmin'], exact: true },
+    { path: '/api/pricing/rules', method: 'GET', roles: ['Admin', 'SubAdmin'], exact: true },
+    { path: '/api/pricing/rules', method: 'POST', roles: ['Admin', 'SubAdmin'], exact: true },
+    { path: '/api/pricing/rules/:id', method: 'PUT', roles: ['Admin', 'SubAdmin'] },
+    { path: '/api/pricing/rules/:id', method: 'DELETE', roles: ['Admin', 'SubAdmin'] },
+    { path: '/api/pricing/audit-logs', method: 'GET', roles: ['Admin', 'SubAdmin'], exact: true },
+    { path: '/api/partial-payment/history', method: 'GET', roles: ['Traveler', 'Admin', 'SubAdmin'], exact: true },
+    { path: '/api/partial-payment/summary/:bookingId', method: 'GET', roles: ['Traveler', 'Admin', 'SubAdmin'] },
+    { path: '/api/partial-payment/balance/:bookingId', method: 'POST', roles: ['Traveler', 'Admin', 'SubAdmin'] },
+    { path: '/api/partial-payment/balance/verify', method: 'POST', roles: ['Traveler', 'Admin', 'SubAdmin'], exact: true },
+    { path: '/api/locale/language', method: 'GET', roles: ['Traveler', 'Agent', 'Admin', 'SubAdmin', 'Guide'], exact: true },
+    { path: '/api/locale/language', method: 'PUT', roles: ['Traveler', 'Agent', 'Admin', 'SubAdmin', 'Guide'], exact: true },
 
 ]
 

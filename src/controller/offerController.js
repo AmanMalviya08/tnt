@@ -18,7 +18,8 @@ class OfferController {
     }
 
     async getAllOffers(options = {} , filter={}) {
-        const { page = 1, limit = DEFAULT_PAGE_SIZE, type, isDisabled } = options;
+        const merged = { ...filter, ...options };
+        const { page = 1, limit = DEFAULT_PAGE_SIZE, type, isDisabled, active } = merged;
        const parsedPage = parseInt(page, 10);
         const parsedLimit = parseInt(limit, 10);
  
@@ -26,7 +27,15 @@ class OfferController {
         const currentPage = !Number.isNaN(parsedPage) && parsedPage > 0 ? parsedPage : 1;
         const normalisedFilter = {};
         if (type) normalisedFilter.type = type;
-        if (isDisabled !== undefined) normalisedFilter.isDisabled = isDisabled;
+        if (isDisabled !== undefined) {
+            normalisedFilter.isDisabled = isDisabled === true || isDisabled === "true";
+        }
+        if (active === true || active === "true") {
+            const now = new Date();
+            normalisedFilter.isDisabled = false;
+            normalisedFilter.startDate = { $lte: now };
+            normalisedFilter.endDate = { $gte: now };
+        }
  
         const banners = await this.model
             .find(normalisedFilter)

@@ -43,3 +43,65 @@ Error: Browser was not found at the configured executablePath (/usr/bin/chromium
     at async InvoiceService.generatePDFBuffer (D:\tour_travles\api.zunjarraoyatra.com\src\services\invoiceService.js:82:17)
     at async InvoiceService.generateInvoice (D:\tour_travles\api.zunjarraoyatra.com\src\services\invoiceService.js:24:25)
     at async generateInvoice (D:\tour_travles\api.zunjarraoyatra.com\src\controller\invoiceController.js:40:26)
+[2026-06-11 11:18:47.431] [INFO] [generateInvoice] START | {"bookingId":"BK-MQ92UDMI-7X9M13","invoiceNumber":"INV-MQ92UDML-JUPQTO","startTime":"2026-06-11T05:48:47.430Z"}
+[2026-06-11 11:18:47.437] [INFO] [generateInvoice] Generating PDF buffer... | {"bookingId":"BK-MQ92UDMI-7X9M13"}
+[2026-06-11 11:18:47.438] [INFO] [generatePDFBuffer] START - Launching Puppeteer browser | {"bookingId":"BK-MQ92UDMI-7X9M13","startTime":"2026-06-11T05:48:47.438Z","chromiumPath":"/usr/bin/chromium-browser"}
+[2026-06-11 11:18:47.460] [INFO] [generatePDFBuffer] Launching browser... | {"bookingId":"BK-MQ92UDMI-7X9M13","elapsed":"22ms"}
+[2026-06-11 11:18:47.465] [ERROR] [generatePDFBuffer] END - FAILED | {"bookingId":"BK-MQ92UDMI-7X9M13","endTime":"2026-06-11T05:48:47.464Z","totalDuration":"26ms","error":"Browser was not found at the configured executablePath (/usr/bin/chromium-browser)"}
+Error: Browser was not found at the configured executablePath (/usr/bin/chromium-browser)
+    at ChromeLauncher.launch (D:\tour_travles\api.zunjarraoyatra.com\node_modules\puppeteer-core\lib\cjs\puppeteer\node\BrowserLauncher.js:90:19)
+    at async InvoiceService.generatePDFBuffer (D:\tour_travles\api.zunjarraoyatra.com\src\services\invoiceService.js:82:17)
+    at async InvoiceService.generateInvoice (D:\tour_travles\api.zunjarraoyatra.com\src\services\invoiceService.js:24:25)
+    at async Immediate.<anonymous> (D:\tour_travles\api.zunjarraoyatra.com\src\controller\checkoutController.js:1122:26)
+[2026-06-11 11:18:47.465] [ERROR] [generateInvoice] END - FAILED | {"bookingId":"BK-MQ92UDMI-7X9M13","endTime":"2026-06-11T05:48:47.465Z","totalDuration":"35ms","error":"Browser was not found at the configured executablePath (/usr/bin/chromium-browser)"}
+Error: Browser was not found at the configured executablePath (/usr/bin/chromium-browser)
+    at ChromeLauncher.launch (D:\tour_travles\api.zunjarraoyatra.com\node_modules\puppeteer-core\lib\cjs\puppeteer\node\BrowserLauncher.js:90:19)
+    at async InvoiceService.generatePDFBuffer (D:\tour_travles\api.zunjarraoyatra.com\src\services\invoiceService.js:82:17)
+    at async InvoiceService.generateInvoice (D:\tour_travles\api.zunjarraoyatra.com\src\services\invoiceService.js:24:25)
+    at async Immediate.<anonymous> (D:\tour_travles\api.zunjarraoyatra.com\src\controller\checkoutController.js:1122:26)
+[2026-06-13 13:46:17.529] [INFO] [generateInvoice] START | {"bookingId":"BK-MQC2ZPZA-7XO0VQ","invoiceNumber":"INV-MQC2ZQ08-GL8JG9","startTime":"2026-06-13T08:16:17.528Z"}
+[2026-06-13 13:46:17.532] [INFO] [generateInvoice] Generating PDF buffer... | {"bookingId":"BK-MQC2ZPZA-7XO0VQ"}
+[2026-06-13 13:46:17.533] [INFO] [generatePDFBuffer] START - Launching Puppeteer browser | {"bookingId":"BK-MQC2ZPZA-7XO0VQ","startTime":"2026-06-13T08:16:17.533Z","chromiumPath":"/usr/bin/chromium-browser"}
+[2026-06-13 13:46:17.555] [INFO] [generatePDFBuffer] Launching browser... | {"bookingId":"BK-MQC2ZPZA-7XO0VQ","elapsed":"22ms"}
+[2026-06-13 13:46:18.158] [INFO] [generatePDFBuffer] Browser launched. Opening new page... | {"bookingId":"BK-MQC2ZPZA-7XO0VQ","elapsed":"625ms"}
+[2026-06-13 13:46:18.245] [INFO] [generatePDFBuffer] Page opened. Setting HTML content... | {"bookingId":"BK-MQC2ZPZA-7XO0VQ","elapsed":"712ms"}
+[2026-06-13 13:46:18.268] [INFO] [generatePDFBuffer] HTML content set. Generating PDF... | {"bookingId":"BK-MQC2ZPZA-7XO0VQ","elapsed":"735ms"}
+[2026-06-13 13:46:19.231] [INFO] [generatePDFBuffer] PDF generated. Closing browser... | {"bookingId":"BK-MQC2ZPZA-7XO0VQ","pdfSizeKB":"298.16 KB","elapsed":"1698ms"}
+[2026-06-13 13:46:19.645] [INFO] [generatePDFBuffer] END - SUCCESS | {"bookingId":"BK-MQC2ZPZA-7XO0VQ","pdfSizeKB":"298.16 KB","endTime":"2026-06-13T08:16:19.645Z","totalDuration":"2112ms"}
+[2026-06-13 13:46:19.646] [INFO] [generateInvoice] PDF buffer ready. Uploading to S3... | {"bookingId":"BK-MQC2ZPZA-7XO0VQ"}
+[2026-06-13 13:46:19.647] [INFO] [uploadInvoiceToS3] START - Uploading to S3 | {"invoiceNumber":"INV-MQC2ZQ08-GL8JG9","startTime":"2026-06-13T08:16:19.647Z","pdfSizeKB":"298.16 KB"}
+[2026-06-13 13:46:43.465] [INFO] [uploadInvoiceToS3] END - SUCCESS | {"invoiceNumber":"INV-MQC2ZQ08-GL8JG9","invoiceUrl":"https://sgp1.digitaloceanspaces.com/satyakabir-bucket/TourTravels/INVOICES/invoice_INV-MQC2ZQ08-GL8JG9_1781338579647.pdf","endTime":"2026-06-13T08:16:43.465Z","totalDuration":"23818ms"}
+[2026-06-13 13:46:43.466] [INFO] [generateInvoice] END - SUCCESS | {"bookingId":"BK-MQC2ZPZA-7XO0VQ","invoiceUrl":"https://sgp1.digitaloceanspaces.com/satyakabir-bucket/TourTravels/INVOICES/invoice_INV-MQC2ZQ08-GL8JG9_1781338579647.pdf","endTime":"2026-06-13T08:16:43.466Z","totalDuration":"25938ms"}
+[2026-06-13 13:57:46.368] [INFO] [generateInvoice] START | {"bookingId":"BK-MQC3EIOW-7PSIZ8","invoiceNumber":"INV-MQC3EIOX-5QHAQ1","startTime":"2026-06-13T08:27:46.367Z"}
+[2026-06-13 13:57:46.368] [INFO] [generateInvoice] Generating PDF buffer... | {"bookingId":"BK-MQC3EIOW-7PSIZ8"}
+[2026-06-13 13:57:46.369] [INFO] [generatePDFBuffer] START - Launching Puppeteer browser | {"bookingId":"BK-MQC3EIOW-7PSIZ8","startTime":"2026-06-13T08:27:46.369Z","chromiumPath":"/usr/bin/chromium-browser"}
+[2026-06-13 13:57:46.374] [INFO] [generatePDFBuffer] Launching browser... | {"bookingId":"BK-MQC3EIOW-7PSIZ8","elapsed":"5ms"}
+[2026-06-13 13:57:46.880] [INFO] [generatePDFBuffer] Browser launched. Opening new page... | {"bookingId":"BK-MQC3EIOW-7PSIZ8","elapsed":"511ms"}
+[2026-06-13 13:57:46.953] [INFO] [generatePDFBuffer] Page opened. Setting HTML content... | {"bookingId":"BK-MQC3EIOW-7PSIZ8","elapsed":"584ms"}
+[2026-06-13 13:57:46.964] [INFO] [generatePDFBuffer] HTML content set. Generating PDF... | {"bookingId":"BK-MQC3EIOW-7PSIZ8","elapsed":"595ms"}
+[2026-06-13 13:57:48.082] [INFO] [generatePDFBuffer] PDF generated. Closing browser... | {"bookingId":"BK-MQC3EIOW-7PSIZ8","pdfSizeKB":"298.17 KB","elapsed":"1713ms"}
+[2026-06-13 13:57:49.321] [INFO] [generatePDFBuffer] END - SUCCESS | {"bookingId":"BK-MQC3EIOW-7PSIZ8","pdfSizeKB":"298.17 KB","endTime":"2026-06-13T08:27:49.321Z","totalDuration":"2952ms"}
+[2026-06-13 13:57:49.322] [INFO] [generateInvoice] PDF buffer ready. Uploading to S3... | {"bookingId":"BK-MQC3EIOW-7PSIZ8"}
+[2026-06-13 13:57:49.323] [INFO] [uploadInvoiceToS3] START - Uploading to S3 | {"invoiceNumber":"INV-MQC3EIOX-5QHAQ1","startTime":"2026-06-13T08:27:49.323Z","pdfSizeKB":"298.17 KB"}
+[2026-06-13 13:58:17.149] [INFO] [uploadInvoiceToS3] END - SUCCESS | {"invoiceNumber":"INV-MQC3EIOX-5QHAQ1","invoiceUrl":"https://sgp1.digitaloceanspaces.com/satyakabir-bucket/TourTravels/INVOICES/invoice_INV-MQC3EIOX-5QHAQ1_1781339269323.pdf","endTime":"2026-06-13T08:28:17.148Z","totalDuration":"27825ms"}
+[2026-06-13 13:58:17.149] [INFO] [generateInvoice] END - SUCCESS | {"bookingId":"BK-MQC3EIOW-7PSIZ8","invoiceUrl":"https://sgp1.digitaloceanspaces.com/satyakabir-bucket/TourTravels/INVOICES/invoice_INV-MQC3EIOX-5QHAQ1_1781339269323.pdf","endTime":"2026-06-13T08:28:17.149Z","totalDuration":"30782ms"}
+[2026-06-13 14:08:00.282] [INFO] [generateInvoice] START | {"bookingId":"BK-MQC3RPCE-VSKHS4","invoiceNumber":"INV-MQC3RPCG-BKR68Y","startTime":"2026-06-13T08:38:00.282Z"}
+[2026-06-13 14:08:00.284] [INFO] [generateInvoice] Generating PDF buffer... | {"bookingId":"BK-MQC3RPCE-VSKHS4"}
+[2026-06-13 14:08:00.285] [INFO] [generatePDFBuffer] START - Launching Puppeteer browser | {"bookingId":"BK-MQC3RPCE-VSKHS4","startTime":"2026-06-13T08:38:00.285Z","chromiumPath":"/usr/bin/chromium-browser"}
+[2026-06-13 14:08:00.293] [INFO] [generatePDFBuffer] Launching browser... | {"bookingId":"BK-MQC3RPCE-VSKHS4","elapsed":"8ms"}
+[2026-06-13 14:08:00.852] [INFO] [generatePDFBuffer] Browser launched. Opening new page... | {"bookingId":"BK-MQC3RPCE-VSKHS4","elapsed":"567ms"}
+[2026-06-13 14:08:00.908] [INFO] [generatePDFBuffer] Page opened. Setting HTML content... | {"bookingId":"BK-MQC3RPCE-VSKHS4","elapsed":"622ms"}
+[2026-06-13 14:08:00.920] [INFO] [generatePDFBuffer] HTML content set. Generating PDF... | {"bookingId":"BK-MQC3RPCE-VSKHS4","elapsed":"635ms"}
+[2026-06-13 14:08:01.775] [INFO] [generatePDFBuffer] PDF generated. Closing browser... | {"bookingId":"BK-MQC3RPCE-VSKHS4","pdfSizeKB":"321.73 KB","elapsed":"1490ms"}
+[2026-06-13 14:08:03.579] [INFO] [generatePDFBuffer] END - SUCCESS | {"bookingId":"BK-MQC3RPCE-VSKHS4","pdfSizeKB":"321.73 KB","endTime":"2026-06-13T08:38:03.579Z","totalDuration":"3294ms"}
+[2026-06-13 14:08:03.579] [INFO] [generateInvoice] PDF buffer ready. Uploading to S3... | {"bookingId":"BK-MQC3RPCE-VSKHS4"}
+[2026-06-13 14:08:03.580] [INFO] [uploadInvoiceToS3] START - Uploading to S3 | {"invoiceNumber":"INV-MQC3RPCG-BKR68Y","startTime":"2026-06-13T08:38:03.580Z","pdfSizeKB":"321.73 KB"}
+[2026-06-13 14:25:45.607] [INFO] [generatePDFBuffer] START - Launching Puppeteer browser | {"bookingId":"BK-MQC4EIF5-221Q5X","startTime":"2026-06-13T08:55:45.589Z","chromiumPath":"/usr/bin/chromium-browser"}
+[2026-06-13 14:25:45.804] [INFO] [generatePDFBuffer] Launching browser... | {"bookingId":"BK-MQC4EIF5-221Q5X","elapsed":"215ms"}
+[2026-06-13 14:25:49.596] [INFO] [generatePDFBuffer] Browser launched. Opening new page... | {"bookingId":"BK-MQC4EIF5-221Q5X","elapsed":"4007ms"}
+[2026-06-13 14:25:49.945] [INFO] [generatePDFBuffer] Page opened. Setting HTML content... | {"bookingId":"BK-MQC4EIF5-221Q5X","elapsed":"4356ms"}
+[2026-06-13 14:25:50.047] [INFO] [generatePDFBuffer] HTML content set. Generating PDF... | {"bookingId":"BK-MQC4EIF5-221Q5X","elapsed":"4458ms"}
+[2026-06-13 14:25:57.726] [INFO] [generatePDFBuffer] PDF generated. Closing browser... | {"bookingId":"BK-MQC4EIF5-221Q5X","pdfSizeKB":"298.07 KB","elapsed":"12136ms"}
+[2026-06-13 14:26:01.297] [INFO] [generatePDFBuffer] END - SUCCESS | {"bookingId":"BK-MQC4EIF5-221Q5X","pdfSizeKB":"298.07 KB","endTime":"2026-06-13T08:56:01.296Z","totalDuration":"15707ms"}
+[2026-06-13 14:26:01.304] [INFO] [uploadInvoiceToS3] START - Uploading to S3 | {"invoiceNumber":"INV-MQC4EIFN-ZHLPBB","startTime":"2026-06-13T08:56:01.303Z","pdfSizeKB":"298.07 KB"}
+[2026-06-13 14:26:27.303] [INFO] [uploadInvoiceToS3] END - SUCCESS | {"invoiceNumber":"INV-MQC4EIFN-ZHLPBB","invoiceUrl":"https://sgp1.digitaloceanspaces.com/satyakabir-bucket/TourTravels/INVOICES/invoice_INV-MQC4EIFN-ZHLPBB_1781340961310.pdf","endTime":"2026-06-13T08:56:27.303Z","totalDuration":"26000ms"}

@@ -142,7 +142,8 @@ class PackageController {
           ? options.includeDisabled === "true"
           : Boolean(options.includeDisabled);
       if (!includeDisabled) {
-        // normalizedFilter.isDisabled = false;
+        normalizedFilter.isDisabled = false;
+        normalizedFilter.status = "Active";
       }
     }
 

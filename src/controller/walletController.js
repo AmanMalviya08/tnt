@@ -2,6 +2,7 @@ const { agentModel } = require("../models/agentModel");
 const { userModel } = require("../models/userModel");
 const Transaction = require("../models/transactionModel");
 const mongoose = require("mongoose");
+const { notifyUser, formatInr } = require("../services/notificationDispatchService");
 
 // Get Wallet Balance and Transaction History
 exports.getWalletDetails = async (req, res) => {
@@ -151,6 +152,17 @@ exports.requestWithdrawal = async (req, res) => {
 
         await session.commitTransaction();
         session.endSession();
+
+        const createdTxn = transaction[0];
+        setImmediate(() => {
+            notifyUser(userId, {
+                title: "Withdrawal Requested",
+                message: `Your withdrawal of ${formatInr(amount)} via ${withdrawalMethod} has been submitted.`,
+                type: "system",
+                redirectScreen: "WithdrawalHistory",
+                meta: { transactionId: createdTxn?._id?.toString?.() },
+            }).catch((err) => console.error("[Notify] Agent withdrawal:", err.message));
+        });
 
         res.status(201).json({
             success: true,
@@ -352,6 +364,16 @@ exports.approveWithdrawal = async (req, res) => {
         transaction.transactionId = paymentTransactionId; // Map manual ID to transactionId as well
         await transaction.save();
 
+        setImmediate(() => {
+            notifyUser(transaction.userId, {
+                title: "Withdrawal Approved",
+                message: `Your withdrawal of ${formatInr(transaction.amount)} has been approved.`,
+                type: "system",
+                redirectScreen: "WithdrawalHistory",
+                meta: { transactionId: transaction._id?.toString?.() },
+            }).catch((err) => console.error("[Notify] Withdrawal approved:", err.message));
+        });
+
         res.status(200).json({
             success: true,
             message: "Withdrawal approved successfully",
@@ -418,6 +440,18 @@ exports.rejectWithdrawal = async (req, res) => {
 
         await session.commitTransaction();
         session.endSession();
+
+        setImmediate(() => {
+            notifyUser(user._id, {
+                title: "Withdrawal Rejected",
+                message: reason
+                    ? `Your withdrawal of ${formatInr(transaction.amount)} was rejected: ${reason}`
+                    : `Your withdrawal of ${formatInr(transaction.amount)} was rejected and refunded to wallet.`,
+                type: "system",
+                redirectScreen: "WithdrawalHistory",
+                meta: { transactionId: transaction._id?.toString?.() },
+            }).catch((err) => console.error("[Notify] Withdrawal rejected:", err.message));
+        });
 
         res.status(200).json({
             success: true,
@@ -1349,6 +1383,10 @@ exports.updatePaymentMethods = async (req, res) => {
         const { bankDetails, upiId } = req.body;
 
         if (role === 'Agent') {
+            const existingAgent = await agentModel.findOne({ userId });
+            const hadBank = Boolean(existingAgent?.bankDetails?.accountNumber);
+            const hadUpi = Boolean(existingAgent?.upiId);
+
             const agent = await agentModel.findOneAndUpdate(
                 { userId },
                 { $set: { bankDetails, upiId } },
@@ -1363,6 +1401,49 @@ exports.updatePaymentMethods = async (req, res) => {
             await userModel.findByIdAndUpdate(userId, {
                 $set: { bankDetails, upiId }
             });
+
+            const bankAdded = Boolean(bankDetails?.accountNumber) && !hadBank;
+            const upiAdded = Boolean(upiId) && !hadUpi;
+            const bankUpdated = Boolean(bankDetails?.accountNumber) && hadBank
+                && JSON.stringify(bankDetails) !== JSON.stringify(existingAgent?.bankDetails || {});
+            const upiUpdated = Boolean(upiId) && hadUpi && upiId !== existingAgent?.upiId;
+
+            if (bankAdded || upiAdded || bankUpdated || upiUpdated) {
+                setImmediate(() => {
+                    const tasks = [];
+                    if (bankAdded) {
+                        tasks.push(notifyUser(userId, {
+                            title: "Bank Account Added",
+                            message: "Your bank account has been saved successfully.",
+                            type: "system",
+                            redirectScreen: "Payment",
+                        }));
+                    } else if (bankUpdated) {
+                        tasks.push(notifyUser(userId, {
+                            title: "Bank Account Updated",
+                            message: "Your bank account details have been updated.",
+                            type: "system",
+                            redirectScreen: "Payment",
+                        }));
+                    }
+                    if (upiAdded) {
+                        tasks.push(notifyUser(userId, {
+                            title: "UPI ID Added",
+                            message: "Your UPI ID has been saved successfully.",
+                            type: "system",
+                            redirectScreen: "Payment",
+                        }));
+                    } else if (upiUpdated) {
+                        tasks.push(notifyUser(userId, {
+                            title: "UPI ID Updated",
+                            message: "Your UPI ID has been updated successfully.",
+                            type: "system",
+                            redirectScreen: "Payment",
+                        }));
+                    }
+                    Promise.allSettled(tasks).catch((err) => console.error("[Notify] Payment methods:", err.message));
+                });
+            }
 
             return res.status(200).json({
                 success: true,

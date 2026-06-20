@@ -4,7 +4,19 @@ const { uploadAny } = require("../middleware/s3Upload");
 
 const router = express.Router();
 
-router.post("/single", uploadAny(), UploadController.single);
-router.post("/multiple", uploadAny(), UploadController.multiple);
+const handleUpload = (handler) => (req, res) => {
+  uploadAny()(req, res, (err) => {
+    if (err) {
+      return res.status(500).json({
+        success: false,
+        message: err.message || 'File upload failed',
+      });
+    }
+    return handler(req, res);
+  });
+};
+
+router.post("/single", handleUpload(UploadController.single));
+router.post("/multiple", handleUpload(UploadController.multiple));
 
 module.exports = router;

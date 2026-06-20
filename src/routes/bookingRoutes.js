@@ -43,6 +43,17 @@ router.post("/", async (req, res) => {
 
     const booking = await bookingController.createBooking(payload);
 
+    if (booking?.paymentStatus === "Paid") {
+      setImmediate(async () => {
+        try {
+          const { creditGuideCommissionForBooking } = require("../services/guideCommissionService");
+          await creditGuideCommissionForBooking(booking._id, { trigger: "payment" });
+        } catch (err) {
+          console.error("[booking/create] Guide commission credit failed:", err.message);
+        }
+      });
+    }
+
     if (loyaltyDiscountApplied && loyaltyDiscountApplied.discountType === "free") {
       await bookingController.updateBooking(booking._id, {
         $set: { discountAmount: booking.totalAmount },
@@ -177,6 +188,18 @@ router.put("/:id", protect, async (req, res) => {
         .status(404)
         .json({ success: false, message: "Booking not found" });
     }
+
+    if (booking.paymentStatus === "Paid") {
+      setImmediate(async () => {
+        try {
+          const { creditGuideCommissionForBooking } = require("../services/guideCommissionService");
+          await creditGuideCommissionForBooking(booking._id, { trigger: "payment" });
+        } catch (err) {
+          console.error("[booking/update] Guide commission credit failed:", err.message);
+        }
+      });
+    }
+
     res.status(200).json({
       success: true,
       message: "Booking updated successfully",
@@ -209,6 +232,30 @@ router.patch("/:id/disable", protect, async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.patch("/:id/cancel", protect, async (req, res) => {
+  try {
+    const { reason } = req.body || {};
+    const booking = await bookingController.cancelBooking(req.params.id, {
+      reason,
+      userId: req.user?.userId,
+    });
+
+    if (!booking) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Booking not found" });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Booking cancelled successfully",
+      data: booking,
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
   }
 });
 
@@ -295,6 +342,63 @@ router.get("/invoice-url/:bookingId", async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * POST /api/bookings/:id/test-payment
+ * Mock/test payment completion for CRM agent bookings (USE_MOCK_PAYMENTS or development).
+ */
+router.post("/:id/test-payment", protect, async (req, res) => {
+  try {
+    const allowTest =
+      process.env.USE_MOCK_PAYMENTS === "true" ||
+      process.env.MOCK_PAYMENT === "true" ||
+      process.env.NODE_ENV === "development";
+
+    if (!allowTest) {
+      return res.status(403).json({
+        success: false,
+        message: "Test payment is disabled. Enable USE_MOCK_PAYMENTS or run in development.",
+      });
+    }
+
+    const booking = await bookingController.completeTestPayment(req.params.id, {
+      paymentMethod: req.body?.paymentMethod,
+      transactionId: req.body?.transactionId,
+    });
+
+    if (!booking) {
+      return res.status(404).json({ success: false, message: "Booking not found" });
+    }
+
+    // Record payment history when available
+    try {
+      const { recordPaymentHistory } = require("../services/partialPaymentService");
+      await recordPaymentHistory({
+        userId: req.user?.userId,
+        bookingId: booking._id,
+        bookingRef: booking.bookingId,
+        amount: booking.finalAmount ?? booking.totalAmount ?? 0,
+        paymentType: "full",
+        paymentMethod: booking.paymentMethod,
+        transactionId: booking.transactionId,
+        status: "Completed",
+        notes: "Test/mock payment",
+      });
+    } catch (historyErr) {
+      console.warn("[test-payment] History log skipped:", historyErr.message);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Test payment completed — booking marked as Paid",
+      data: booking,
+      paymentStatus: "Paid",
+    });
+  } catch (error) {
+    const status = error.code === "ALREADY_PAID" ? 400 : 500;
+    return res.status(status).json({ success: false, message: error.message });
   }
 });
 

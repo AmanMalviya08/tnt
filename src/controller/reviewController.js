@@ -1,5 +1,6 @@
 const { default: mongoose } = require("mongoose");
 const { reviewModel } = require("../models/reviewModel");
+const { bookingModel } = require("../models/bookingModel");
 const DEFAULT_PAGE_SIZE = parseInt(process.env.DEFAULT_PAGE_SIZE || "20", 10);
 const DEFAULT_TESTIMONIALS_PAGE_SIZE = parseInt(
   process.env.DEFAULT_TESTIMONIALS_PAGE_SIZE || "5",
@@ -11,8 +12,26 @@ class ReviewController {
     this.model = model;
   }
 
+  async resolveBookingObjectId(bookingId) {
+    if (!bookingId) {
+      return null;
+    }
+
+    const value = String(bookingId).trim();
+    if (mongoose.Types.ObjectId.isValid(value) && value.length === 24) {
+      return value;
+    }
+
+    const booking = await bookingModel
+      .findOne({ bookingId: value })
+      .select("_id")
+      .lean();
+
+    return booking?._id || null;
+  }
+
   async addReview(payload) {
-    const { userId, review, placeId, packageId, guideId, tourId, bookingId } =
+    let { userId, review, placeId, packageId, guideId, tourId, bookingId } =
       payload;
     let { rating = "1", location = "1", price = "1", services = "1" } = payload;
 
@@ -28,6 +47,14 @@ class ReviewController {
     if (services && services.trim()) {
       services = Math.min(Math.max(Number(services), 1), 5);
     }
+
+    if (bookingId) {
+      bookingId = await this.resolveBookingObjectId(bookingId);
+      if (!bookingId) {
+        throw new Error("Invalid booking reference for review");
+      }
+    }
+
     const findOneData = {};
     findOneData.userId = userId;
 

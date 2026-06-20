@@ -2,6 +2,7 @@ const express = require("express");
 const {
   createBookingsFromCart,
   confirmPayment,
+  getRazorpayConfig,
   createAgentPaidOrder,
   confirmAgentPayment,
   createAgentPaidOrderDynamic,
@@ -14,6 +15,7 @@ const { bookingModel } = require("../models/bookingModel");
 
 const router = express.Router();
 
+router.get("/razorpay-config", getRazorpayConfig);
 router.post("/verify", protect, confirmPayment); // conform payment for user
 
 // Agent paid subscription (company fixed fee)

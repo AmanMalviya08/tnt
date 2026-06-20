@@ -3,6 +3,7 @@ const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
 const path = require("path");
+const fs = require("fs");
 
 dotenv.config();
 
@@ -97,6 +98,10 @@ app.use('/api/wallet', require('./routes/walletRoutes'));
 app.use('/api/benefits', require('./routes/benefitRoutes'));
 app.use('/api/rewards', require('./routes/rewardRoutes'));
 app.use('/api/yatra-loyalty', require('./routes/yatraLoyaltyRoutes'));
+app.use('/api/aadhaar', require('./routes/aadhaarRoutes'));
+app.use('/api/pricing', require('./routes/pricingRoutes'));
+app.use('/api/partial-payment', require('./routes/partialPaymentRoutes'));
+app.use('/api/locale', require('./routes/localeRoutes'));
 app.use('/api/complaints', require('./routes/complaintRoutes'));
 app.use('/api/guide-wallet', require('./routes/guideWalletRoutes'));
 app.use('/api/notifications', notificationRoutes);
@@ -121,6 +126,15 @@ app.get('/', (req, res) => {
     message: 'Api is running on 14000 port'
   })
   console.log('Api is running on 14000 port ....')
+})
+
+// Test checkout HTML (Razorpay + agent booking test payment)
+app.get('/test-checkout', (req, res) => {
+  const filePath = path.join(__dirname, '../test-checkout.html');
+  if (fs.existsSync(filePath)) {
+    return res.sendFile(filePath);
+  }
+  res.status(404).json({ success: false, message: 'test-checkout.html not found' });
 })
 
 

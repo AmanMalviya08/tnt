@@ -1,4 +1,4 @@
-const cartModel = require("../models/cartModel");
+const { parseFlexibleDate } = require("../utils/dateParser");
 const { packageModel } = require("../models/packageModel");
 
 class CartController {
@@ -34,8 +34,11 @@ class CartController {
         if (isNaN(children) || children < 0) {
             throw new Error("children cannot be negative");
         }
-        const checkInDateTime = new Date(checkInDate).getTime()
-        // console.log(checkInDate ,"check in date ")
+        const parsedCheckIn = parseFlexibleDate(checkInDate);
+        if (!parsedCheckIn) {
+            throw new Error("Invalid checkInDate format. Use DD/MM/YYYY or YYYY-MM-DD.");
+        }
+        const checkInDateTime = parsedCheckIn.getTime();
         let today = new Date();
         today.setHours(0, 0, 0, 0)
         const todayTime = today.getTime()
@@ -63,7 +66,7 @@ class CartController {
                         quantity,
                         adults,
                         children,
-                        checkInDate: new Date(checkInDate),
+                        checkInDate: parsedCheckIn,
                         selectedAddOns,
                     },
                 ],
@@ -77,7 +80,7 @@ class CartController {
             quantity,
             adults,
             children,
-            checkInDate: new Date(checkInDate),
+            checkInDate: parsedCheckIn,
             selectedAddOns,
         });
 
@@ -142,18 +145,22 @@ class CartController {
             throw new Error("children cannot be negative");
         }
 
-        if (checkInDate) {
-            const checkInDateTime = new Date(checkInDate).getTime();
-            if (isNaN(checkInDateTime)) {
-                throw new Error("Invalid checkInDate format");
-            }
-        }
-
         const updateData = {};
         if (parsedQuantity !== null) updateData["items.$.quantity"] = parsedQuantity;
         if (parsedAdults !== null) updateData["items.$.adults"] = parsedAdults;
         if (parsedChildren !== null) updateData["items.$.children"] = parsedChildren;
-        if (checkInDate) updateData["items.$.checkInDate"] = new Date(checkInDate);
+
+        if (checkInDate) {
+            const parsedCheckIn = parseFlexibleDate(checkInDate);
+            if (!parsedCheckIn) {
+                throw new Error("Invalid checkInDate format. Use DD/MM/YYYY or YYYY-MM-DD.");
+            }
+            const checkInDateTime = parsedCheckIn.getTime();
+            if (isNaN(checkInDateTime)) {
+                throw new Error("Invalid checkInDate format");
+            }
+            updateData["items.$.checkInDate"] = parsedCheckIn;
+        }
         if (parsedPrice) updateData["items.$.selectedAddOns"] = parsedPrice;
 
         const cart = await this.model.findOneAndUpdate(

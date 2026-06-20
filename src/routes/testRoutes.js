@@ -99,9 +99,18 @@ router.get('/all', async (req, res) => {
 
         console.log(`[Test] Email: ${emailRes.status} | SMS: ${smsRes.status} | WA: ${waRes.status}`);
 
+        const hints = [];
+        if (emailRes.status === 'rejected') {
+            hints.push('Email: Regenerate Gmail App Password and set SMARTCLINIC_EMAIL_PASS in .env');
+        }
+        if (waRes.status === 'rejected') {
+            hints.push('WhatsApp: Refresh WHATSAPP_CLOUD_API_TOKEN or activate Aisensy plan (AISENSY_API_KEY)');
+        }
+
         res.status(200).json({
-            success: true,
-            message: "All notifications triggered",
+            success: emailRes.status === 'fulfilled' || smsRes.status === 'fulfilled' || waRes.status === 'fulfilled',
+            message: "Notification test completed",
+            hints,
             data: {
                 email: { status: emailRes.status, error: emailRes.reason?.message },
                 sms: { status: smsRes.status, error: smsRes.reason?.message },
