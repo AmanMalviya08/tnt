@@ -3,6 +3,17 @@ const Guide = require("../models/guideModel");
 const reviewModel = require("../models/reviewModel");
 const { userModel } = require("../models/userModel");
 const { notifyUser } = require("../services/notificationDispatchService");
+const {
+    normalizePhone,
+    getPhoneLookupVariants,
+} = require("../utils/phoneUtils");
+const {
+    startOptionalSession,
+    commitOptionalSession,
+    abortOptionalSession,
+    saveOptions,
+    applySession,
+} = require("../utils/mongoSession");
 const DEFAULT_PAGE_SIZE = parseInt(process.env.DEFAULT_PAGE_SIZE || "20", 10);
 
 class GuideController {
@@ -14,7 +25,7 @@ class GuideController {
         const {
             fullName,
             email,
-            phone,
+            phone: rawPhone,
             licenseNumber,
             languages,
             dob,
@@ -42,39 +53,83 @@ class GuideController {
             documents
         } = payload;
 
+        const phone = normalizePhone(rawPhone) || String(rawPhone || "").trim();
+        const phoneVariants = getPhoneLookupVariants(phone);
+
         const existingGuide = await this.model.findOne({
-            $or: [{ email }, { licenseNumber }]
-        });
+            $or: [
+                { email },
+                ...(licenseNumber ? [{ licenseNumber }] : []),
+                ...(phoneVariants.length ? [{ phone: { $in: phoneVariants } }] : []),
+            ],
+        }).read("primary");
 
         if (existingGuide) {
-            throw new Error('Guide with this email or license number already exists');
+            throw new Error('Guide with this email, phone, or license number already exists');
         }
 
-        // Check if User exists
-        let user = await userModel.findOne({
-            $or: [{ email }, { phone }],
-        });
+        const userQuery = [];
+        if (email) {
+            userQuery.push({ email });
+        }
+        if (phoneVariants.length) {
+            userQuery.push({ phone: { $in: phoneVariants } });
+        }
+
+        let user = userQuery.length
+            ? await userModel.findOne({ $or: userQuery }).read("primary")
+            : null;
+
         if (user && user.role != 'Guide') {
             throw new Error("Different type of user already exists with this email or phone");
         }
 
-        if (!user) {
-            // Create new User
-            const randomPassword = Math.random().toString(36).slice(-8); // Random password
-            const firstName = fullName ? fullName.split(' ')[0] : "Guide";
-            const lastName = fullName && fullName.split(' ').length > 1 ? fullName.split(' ').slice(1).join(' ') : "User";
-            user = await userModel.create({
-                firstName: firstName,
-                lastName: lastName,
-                email: email,
-                phone: phone,
-                role: "Guide",
-                password: randomPassword,
-                status: "Active",
-                isEmailVerified: true,
-                isPhoneVerified: true
-            });
-        }
+        const session = await startOptionalSession();
+
+        try {
+            if (!user) {
+                const randomPassword = Math.random().toString(36).slice(-8);
+                const firstName = fullName ? fullName.split(' ')[0] : "Guide";
+                const lastName = fullName && fullName.split(' ').length > 1
+                    ? fullName.split(' ').slice(1).join(' ')
+                    : "User";
+                const createdUsers = await userModel.create([{
+                    firstName,
+                    lastName,
+                    email,
+                    phone,
+                    role: "Guide",
+                    password: randomPassword,
+                    status: "Active",
+                    isEmailVerified: true,
+                    isPhoneVerified: true,
+                }], saveOptions(session));
+                user = createdUsers[0];
+            } else {
+                const existingGuideForUser = await applySession(
+                    this.model.findOne({ userId: user._id }),
+                    session,
+                );
+                if (existingGuideForUser) {
+                    throw new Error('Guide profile already exists for this user');
+                }
+
+                if (phone) {
+                    user.phone = phone;
+                }
+                if (fullName) {
+                    user.firstName = fullName.split(' ')[0];
+                    user.lastName = fullName.split(' ').slice(1).join(' ') || user.lastName;
+                }
+                if (email) {
+                    user.email = email;
+                }
+                user.role = "Guide";
+                user.status = "Active";
+                user.isEmailVerified = true;
+                user.isPhoneVerified = true;
+                await user.save(saveOptions(session));
+            }
 
         // Build documents object from uploaded file URLs or body payload
         const now = new Date();
@@ -93,7 +148,7 @@ class GuideController {
             }
         }
 
-        const newGuide = await this.model.create({
+        const createdGuides = await this.model.create([{
             userId: user._id,
             fullName,
             email,
@@ -132,7 +187,10 @@ class GuideController {
                 }
                 : { status: 'Pending' },
             ...(isAdminCreated && { verificationDate: now })
-        });
+        }], saveOptions(session));
+        const newGuide = createdGuides[0];
+
+        await commitOptionalSession(session);
 
         if (newGuide && newGuide.userId) {
             const userUpdatePayload = {};
@@ -161,6 +219,10 @@ class GuideController {
         }
 
         return newGuide;
+        } catch (error) {
+            await abortOptionalSession(session);
+            throw error;
+        }
     }
 
     async getGuides(options = {}, filters = {}) {
@@ -317,6 +379,10 @@ class GuideController {
         // updates.lastModifiedBy = updatedBy;
         updateData.lastModifiedBy = updatedBy
 
+        if (updateData.phone !== undefined) {
+            updateData.phone = normalizePhone(updateData.phone) || updateData.phone;
+        }
+
         const currentGuide = await this.model.findById(guideId);
         if (currentGuide && currentGuide.userId) {
             const userUpdatePayload = {};
@@ -326,6 +392,9 @@ class GuideController {
             }
             if (updateData.email !== undefined) {
                 userUpdatePayload.email = updateData.email;
+            }
+            if (updateData.phone !== undefined) {
+                userUpdatePayload.phone = normalizePhone(updateData.phone) || updateData.phone;
             }
             if (updateData.profileImage !== undefined) {
                 userUpdatePayload.avatarUrl = updateData.profileImage;

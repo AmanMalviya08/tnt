@@ -139,6 +139,5 @@ app.get('/test-checkout', (req, res) => {
 
 
 
-connectDB();
-
 module.exports = app;
+module.exports.connectDB = connectDB;

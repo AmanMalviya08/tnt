@@ -12,8 +12,10 @@ class EmailService {
     this.smtpUser =
       process.env.EMAIL_USER || process.env.SMARTCLINIC_EMAIL_USER;
 
-    this.smtpPass =
+    const rawPass =
       process.env.EMAIL_PASS || process.env.SMARTCLINIC_EMAIL_PASS;
+    // Gmail app passwords are 16 chars; strip spaces if pasted with grouping
+    this.smtpPass = rawPass ? String(rawPass).replace(/\s+/g, "") : rawPass;
 
     if (!this.smtpUser || !this.smtpPass) {
       console.error(

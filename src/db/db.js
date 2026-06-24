@@ -11,6 +11,7 @@ async function connectDB() {
       minPoolSize: 2,
       socketTimeoutMS: 60000,
       serverSelectionTimeoutMS: 10000,
+      readPreference: "primary",
     });
 
     console.log("✅ Database connected successfully");

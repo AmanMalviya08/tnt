@@ -9,6 +9,7 @@ const {
   getExpiryDate,
   sendOtpViaMSG91,
 } = require("../utils/otpHelper");
+const { normalizePhone, buildPhoneQuery } = require("../utils/phoneUtils");
 
 const OTP_SALT_ROUNDS = parseInt(
   process.env.PHONE_OTP_SALT_ROUNDS || process.env.BCRYPT_SALT_ROUNDS || "10",
@@ -26,6 +27,106 @@ const DEFAULT_PAGE_SIZE = parseInt(process.env.DEFAULT_PAGE_SIZE || "20", 10);
 class UserController {
   constructor(model = userModel) {
     this.model = model;
+  }
+
+  async findUserByPhone(phone, select = "+phoneOtp.codeHash") {
+    const query = buildPhoneQuery(phone);
+    if (!query) {
+      return null;
+    }
+    return this.model.findOne(query).select(select).read("primary");
+  }
+
+  async resolveGuideLoginContext(phone) {
+    const Guide = require("../models/guideModel");
+    const normalizedPhone = normalizePhone(phone);
+    const phoneQuery = buildPhoneQuery(phone);
+
+    let user = await this.findUserByPhone(phone);
+    const guideSelect = "createdBy status userId phone fullName email";
+    let guideProfile = user
+      ? await Guide.findOne({ userId: user._id })
+          .select(guideSelect)
+          .read("primary")
+      : null;
+
+    if (!guideProfile && phoneQuery) {
+      guideProfile = await Guide.findOne(phoneQuery)
+        .select(guideSelect)
+        .read("primary");
+    }
+
+    if (!guideProfile && normalizedPhone) {
+      const phoneMatches = await Guide.find({
+        $or: [
+          ...(phoneQuery ? [phoneQuery] : []),
+          { phone: { $regex: `${normalizedPhone}$` } },
+        ],
+      })
+        .select(guideSelect)
+        .sort({ createdAt: -1 })
+        .read("primary");
+
+      guideProfile =
+        phoneMatches.find((guide) => guide.createdBy) || phoneMatches[0] || null;
+    }
+
+    if (guideProfile?.userId && !user) {
+      user = await this.model
+        .findById(guideProfile.userId)
+        .select("+phoneOtp.codeHash")
+        .read("primary");
+    }
+
+    if (guideProfile && !guideProfile.userId && user?.role === "Guide") {
+      guideProfile.userId = user._id;
+      await guideProfile.save();
+    }
+
+    if (guideProfile && !guideProfile.userId && !user && phoneQuery) {
+      const linkedUser = await this.model.findOne(phoneQuery).read("primary");
+      if (linkedUser?.role === "Guide") {
+        guideProfile.userId = linkedUser._id;
+        await guideProfile.save();
+        user = await this.model
+          .findById(linkedUser._id)
+          .select("+phoneOtp.codeHash")
+          .read("primary");
+      }
+    }
+
+    if (user && normalizedPhone && normalizePhone(user.phone) !== normalizedPhone) {
+      user.phone = normalizedPhone;
+      await user.save();
+    }
+
+    if (guideProfile && !user) {
+      const phoneToUse = normalizedPhone || String(phone).trim();
+      const randomPassword = crypto.randomBytes(12).toString("hex");
+      const nameParts = (guideProfile.fullName || "Guide User").trim().split(/\s+/);
+      const newUser = new this.model({
+        phone: phoneToUse,
+        firstName: nameParts[0] || "Guide",
+        lastName: nameParts.slice(1).join(" ") || "User",
+        email: guideProfile.email || undefined,
+        role: "Guide",
+        password: randomPassword,
+        status: "Active",
+        isEmailVerified: Boolean(guideProfile.email),
+        isPhoneVerified: false,
+      });
+      user = await newUser.save();
+
+      guideProfile.userId = user._id;
+      await guideProfile.save();
+
+      user = await this.model
+        .findById(user._id)
+        .select("+phoneOtp.codeHash")
+        .read("primary");
+    }
+
+    return { user, guideProfile, normalizedPhone };
   }
 
   async registerUser(payload = {}) {
@@ -576,7 +677,7 @@ class UserController {
       throw new Error("Phone number is required to send OTP");
     }
 
-    let user = await this.model.findOne({ phone }).select("+phoneOtp.codeHash");
+    let user = await this.findUserByPhone(phone);
 
     if (user?.isDisabled) {
       user.isDisabled = false;
@@ -610,25 +711,24 @@ class UserController {
     }
 
     if (role === "Guide") {
-      if (!user) {
-        throw new Error("Guide account not found. Please contact your administrator.");
-      }
-      const Guide = require("../models/guideModel");
-      const guideProfile = await Guide.findOne({ userId: user._id }).select("createdBy status");
-      if (!guideProfile) {
+      const guideContext = await this.resolveGuideLoginContext(phone);
+      user = guideContext.user;
+
+      if (!guideContext.guideProfile) {
         throw new Error("Guide profile not found. Please contact your administrator.");
       }
-      if (!guideProfile.createdBy) {
-        throw new Error("Only admin-registered guides can access this app.");
+      if (!user) {
+        throw new Error("Guide account not found. Please contact your administrator.");
       }
     }
 
     let created = false;
 
-    if (!user) {
+    if (!user && role !== "Guide") {
       const randomPassword = crypto.randomBytes(12).toString("hex");
+      const normalizedPhone = normalizePhone(phone) || String(phone).trim();
       user = new this.model({
-        phone,
+        phone: normalizedPhone,
         firstName: firstName || "Guest",
         lastName,
         email,
@@ -717,10 +817,12 @@ class UserController {
     }
 
     const user = await this.model
-      .findOne({ phone })
+      .findOne(buildPhoneQuery(phone) || { phone })
       .select("+phoneOtp.codeHash")
       .populate("agents")
-      .populate("guides");
+      .populate("guides")
+      .read("primary");
+
     if (!user) {
       return null;
     }
@@ -774,8 +876,8 @@ class UserController {
         shouldCompleteProfile = false;
       }
       const guideProfile = user?.guides;
-      if (!guideProfile?.createdBy) {
-        throw new Error("Only admin-registered guides can access this app.");
+      if (!guideProfile) {
+        throw new Error("Guide profile not found. Please contact your administrator.");
       }
       isVerified = true;
     } else {

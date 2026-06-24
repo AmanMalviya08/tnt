@@ -44,6 +44,13 @@ router.post("/", protect, guideDocUpload, async (req, res) => {
     req.body.documents = documents;
     req.body.createdBy = req.user?.userId || req.body.createdBy;
 
+    if (!req.body.createdBy) {
+      return res.status(401).json({
+        success: false,
+        message: "Admin authentication required to register guides",
+      });
+    }
+
     const guide = await guideController.registerGuide(req.body);
     const assignGuide = req?.body?.assignGuide;
     if (assignGuide) {
