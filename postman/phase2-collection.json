@@ -1,0 +1,83 @@
+{
+  "info": {
+    "name": "Zunjarrao Yatra Phase 2",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://api.zunjarraoyatra.com/api" },
+    { "key": "token", "value": "" },
+    { "key": "tourId", "value": "" },
+    { "key": "bookingId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Tour Share - Create Link",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/tour-share/{{tourId}}/share"
+      }
+    },
+    {
+      "name": "Tour Share - Public Tracking",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/tour-share/public/{{shareToken}}"
+      }
+    },
+    {
+      "name": "Bookings - History Upcoming",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/bookings/history?tab=upcoming&page=1&limit=20"
+      }
+    },
+    {
+      "name": "Bookings - Invoice",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/bookings/{{bookingId}}/invoice"
+      }
+    },
+    {
+      "name": "Packages - Filter by Category",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/packages?category=Temple,Honeymoon&excludePopular=true"
+      }
+    },
+    {
+      "name": "Packages - Popular Only",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/packages/popular?limit=20"
+      }
+    },
+    {
+      "name": "Pricing - Calculate Preview",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"baseAmount\": 5000,\n  \"packageId\": \"\",\n  \"tourId\": \"\",\n  \"adults\": 2\n}"
+        },
+        "url": "{{baseUrl}}/pricing/calculate/preview"
+      }
+    },
+    {
+      "name": "Seats - Lock",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"seatNumber\": \"A1\"\n}" },
+        "url": "{{baseUrl}}/tours/{{tourId}}/seats/lock"
+      }
+    }
+  ]
+}

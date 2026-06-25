@@ -1,0 +1,106 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Zunjarrao Yatra API - Phase 2",
+    "version": "2.0.0",
+    "description": "Tour sharing, booking history, package filters, popular packages, dynamic pricing, seat locks"
+  },
+  "servers": [{ "url": "https://api.zunjarraoyatra.com/api" }],
+  "paths": {
+    "/tour-share/{tourId}/share": {
+      "post": {
+        "summary": "Create shareable tour tracking link",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "tourId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "201": { "description": "Share link created" } }
+      }
+    },
+    "/tour-share/public/{token}": {
+      "get": {
+        "summary": "Public live tracking view (no auth)",
+        "parameters": [{ "name": "token", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Tracking data" }, "410": { "description": "Link expired" } }
+      }
+    },
+    "/bookings/history": {
+      "get": {
+        "summary": "User booking history with tabs",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "tab", "in": "query", "schema": { "type": "string", "enum": ["all", "upcoming", "past"] } },
+          { "name": "page", "in": "query", "schema": { "type": "integer" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "Booking history list" } }
+      }
+    },
+    "/bookings/{id}/invoice": {
+      "get": {
+        "summary": "Get booking invoice with breakdown",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Invoice data" } }
+      }
+    },
+    "/packages": {
+      "get": {
+        "summary": "List packages with filters",
+        "parameters": [
+          { "name": "category", "in": "query", "description": "Comma-separated: Temple,Honeymoon", "schema": { "type": "string" } },
+          { "name": "excludePopular", "in": "query", "schema": { "type": "boolean" } },
+          { "name": "isPopular", "in": "query", "schema": { "type": "boolean" } },
+          { "name": "sortBy", "in": "query", "schema": { "type": "string", "enum": ["bookingCountLast30Days", "totalBookings", "basePricePerPerson"] } }
+        ],
+        "responses": { "200": { "description": "Package list" } }
+      }
+    },
+    "/packages/filter/data": {
+      "get": { "summary": "Package filter metadata", "responses": { "200": { "description": "Filter options" } } }
+    },
+    "/packages/popular": {
+      "get": { "summary": "Popular packages only", "responses": { "200": { "description": "Popular packages" } } }
+    },
+    "/pricing/calculate": {
+      "post": {
+        "summary": "Dynamic occupancy-based pricing",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "baseAmount": { "type": "number" },
+                  "packageId": { "type": "string" },
+                  "tourId": { "type": "string" },
+                  "travelDate": { "type": "string", "format": "date" },
+                  "adults": { "type": "integer" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Price quote with urgency message" } }
+      }
+    },
+    "/tours/{id}/seats/lock": {
+      "post": {
+        "summary": "Lock seat for 2 minutes",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Seat locked" } }
+      }
+    },
+    "/tours/{id}/seats/release": {
+      "post": {
+        "summary": "Release seat lock",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Seat released" } }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    }
+  }
+}

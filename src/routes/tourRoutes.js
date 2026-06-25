@@ -190,6 +190,48 @@ router.get("/:id/seats", async (req, res) => {
   }
 });
 
+router.post("/:id/seats/lock", protect, async (req, res) => {
+  try {
+    const { seatNumber } = req.body;
+    if (!seatNumber) {
+      return res.status(400).json({ success: false, message: "seatNumber is required" });
+    }
+    const result = await tourController.lockSeat(
+      req.params.id,
+      seatNumber,
+      req.user.userId
+    );
+    res.status(200).json({
+      success: true,
+      message: "Seat locked for 2 minutes",
+      data: result,
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.post("/:id/seats/release", protect, async (req, res) => {
+  try {
+    const { seatNumber } = req.body;
+    if (!seatNumber) {
+      return res.status(400).json({ success: false, message: "seatNumber is required" });
+    }
+    const result = await tourController.releaseSeat(
+      req.params.id,
+      seatNumber,
+      req.user.userId
+    );
+    res.status(200).json({
+      success: true,
+      message: "Seat released",
+      data: result,
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
 router.put("/:id", protect, async (req, res) => {
   try {
     console.log(req.body);

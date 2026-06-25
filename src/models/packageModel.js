@@ -2,6 +2,8 @@ const mongoose = require("mongoose");
 const { generateSlug, ensureUniqueSlug } = require("../utils/slugHelper");
 
 const packageTypes = ["Single City", "Multi-City"];
+const packageCategories = ["Temple", "Honeymoon", "Popular Packages", "Other"];
+const mealOptions = [];
 // const mealOptions = ["Breakfast", "Lunch", "Dinner", "Snacks"];
 const transportOptions = ["Bus", "Car", "Flight", "Train", "Cruise", "Tempo Traveller", "Boat", "Mixed"];
 const generatePlaceId = async (Package, currentDocId) => {
@@ -140,6 +142,25 @@ const packageSchema = new mongoose.Schema(
     category: {
       type: String,
       trim: true,
+      enum: packageCategories,
+      default: "Other",
+      index: true,
+    },
+    isPopular: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    bookingCountLast30Days: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    demandFactor: {
+      type: Number,
+      default: 1,
+      min: 0,
+      max: 2,
     },
     itinerary: {
       type: [itinerarySchema],
@@ -359,9 +380,13 @@ packageSchema.pre("findOneAndUpdate", async function (next) {
 });
 const packageModel = mongoose.model("Package", packageSchema);
 
+packageSchema.index({ category: 1, isDisabled: 1 });
+packageSchema.index({ isPopular: 1, bookingCountLast30Days: -1 });
+
 module.exports = {
   packageModel,
   packageTypes,
-  // mealOptions,
+  packageCategories,
+  mealOptions,
   transportOptions,
 };

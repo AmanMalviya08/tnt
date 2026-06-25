@@ -24,7 +24,37 @@ function resolveChromiumPath() {
           "/snap/bin/chromium",
         ];
 
-  return candidates.find((p) => fs.existsSync(p)) || process.env.CHROMIUM_PATH;
+  return candidates.find((p) => fs.existsSync(p)) || null;
+}
+
+async function launchBrowser(bookingRef) {
+  const launchArgs = [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+  ];
+
+  const executablePath = resolveChromiumPath();
+  if (executablePath) {
+    pdfLogger.info(`[generatePDFBuffer] Using browser executable`, {
+      bookingId: bookingRef,
+      executablePath,
+    });
+    return puppeteer.launch({
+      executablePath,
+      headless: true,
+      args: launchArgs,
+    });
+  }
+
+  pdfLogger.warn(`[generatePDFBuffer] System browser not found, using bundled puppeteer`, {
+    bookingId: bookingRef,
+  });
+  const puppeteerFull = require("puppeteer");
+  return puppeteerFull.launch({
+    headless: true,
+    args: launchArgs,
+  });
 }
 
 class InvoiceService {
@@ -70,7 +100,7 @@ class InvoiceService {
         error: error.message,
         stack: error.stack,
       });
-      throw new Error("Failed to generate invoice");
+      throw new Error(`Failed to generate invoice: ${error.message}`);
     }
   }
 
@@ -102,15 +132,7 @@ class InvoiceService {
         elapsed: elapsedMs(startTime),
       });
 
-      browser = await puppeteer.launch({
-        executablePath: resolveChromiumPath(),
-        headless: true,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-        ],
-      });
+      browser = await launchBrowser(bookingRef);
 
       pdfLogger.info(`[generatePDFBuffer] Browser launched. Opening new page...`, {
         bookingId: bookingRef,

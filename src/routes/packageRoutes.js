@@ -3,6 +3,7 @@ const PackageController = require("../controller/packageController");
 const {
   packageModel,
   packageTypes,
+  packageCategories,
   mealOptions,
   transportOptions,
 } = require("../models/packageModel");
@@ -56,6 +57,41 @@ router.get("/", async (req, res) => {
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
+});
+
+router.get("/filter/data", async (req, res) => {
+  try {
+    const data = await packageController.getFilterData();
+    res.status(200).json({
+      success: true,
+      message: "Package filter data fetched",
+      data,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.get("/popular", async (req, res) => {
+  try {
+    const { page, limit } = req.query;
+    const packages = await packageController.getPopularPackages({ page, limit });
+    res.status(200).json({
+      success: true,
+      message: "Popular packages fetched",
+      data: packages.data,
+      pagination: packages.pagination,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.get("/meta/enums", (req, res) => {
+  res.status(200).json({
+    success: true,
+    data: { packageTypes, packageCategories, mealOptions, transportOptions },
+  });
 });
 
 router.get("/:id", async (req, res) => {
@@ -152,11 +188,4 @@ router.delete("/:id", protect, async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
-router.get("/meta/enums", (req, res) => {
-  res.status(200).json({
-    success: true,
-    data: { packageTypes, mealOptions, transportOptions },
-  });
-});
-
 module.exports = router;

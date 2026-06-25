@@ -227,10 +227,29 @@ class TourController {
   }
 
   async getTourSeats(id) {
+    const seatLockService = require("../services/seatLockService");
+    await seatLockService.releaseExpiredLocks(id);
+
     const tour = await this.model
       .findById(id)
-      .select("seats lowerSeats upperSeats totalSeats totalLowerSeats totalUpperSeats bookedSeats remainingSeats seatsPerRow lowerSeatsPerRow upperSeatsPerRow tourName");
+      .select("seats lowerSeats upperSeats totalSeats totalLowerSeats totalUpperSeats bookedSeats remainingSeats seatsPerRow lowerSeatsPerRow upperSeatsPerRow tourName perPersonCost");
     return tour;
+  }
+
+  async lockSeat(tourId, seatNumber, userId) {
+    const seatLockService = require("../services/seatLockService");
+    const { emitSeatUpdate } = require("../services/socketService");
+    const result = await seatLockService.lockSeat(tourId, seatNumber, userId);
+    emitSeatUpdate(tourId, { action: "locked", ...result });
+    return result;
+  }
+
+  async releaseSeat(tourId, seatNumber, userId) {
+    const seatLockService = require("../services/seatLockService");
+    const { emitSeatUpdate } = require("../services/socketService");
+    const result = await seatLockService.releaseSeat(tourId, seatNumber, userId);
+    emitSeatUpdate(tourId, { action: "released", ...result });
+    return result;
   }
 
   async updateTour(id, payload) {

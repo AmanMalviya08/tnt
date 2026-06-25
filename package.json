@@ -30,6 +30,7 @@
     "puppeteer": "^21.0.1",
     "puppeteer-core": "^24.40.0",
     "razorpay": "^2.9.6",
+    "socket.io": "^4.8.3",
     "winston": "^3.19.0"
   }
 }

@@ -258,7 +258,6 @@ router.patch("/:id/cancel", protect, async (req, res) => {
     res.status(400).json({ success: false, message: error.message });
   }
 });
-
 router.get("/meta/enums", (req, res) => {
   res.status(200).json({
     success: true,
@@ -270,6 +269,49 @@ router.get("/meta/enums", (req, res) => {
       userTypes,
     },
   });
+});
+
+router.get("/history", protect, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { page, limit, tab, sort, sortBy, sortOrder, order, ...filters } =
+      req.query || {};
+
+    const bookings = await bookingController.getBookingHistory(
+      { ...filters, tab },
+      { page, limit, sort, sortBy, sortOrder, order, userId }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Booking history fetched",
+      data: bookings.data,
+      pagination: bookings.pagination,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.get("/:id/invoice", protect, async (req, res) => {
+  try {
+    const invoice = await bookingController.getBookingInvoice(
+      req.params.id,
+      req.user.userId
+    );
+    if (!invoice) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Booking not found" });
+    }
+    res.status(200).json({
+      success: true,
+      message: "Invoice fetched",
+      data: invoice,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 });
 
 router.delete("/:id", protect, async (req, res) => {

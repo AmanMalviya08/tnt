@@ -6,6 +6,8 @@ const { pricingRuleModel } = require("../models/pricingRuleModel");
 const { pricingAuditLogModel } = require("../models/pricingAuditLogModel");
 
 const DEFAULT_WEEKEND_DAYS = [0, 6]; // Sunday, Saturday
+const PRICING_CACHE_TTL_MS = 5 * 60 * 1000;
+const pricingCache = new Map();
 
 function roundCurrency(value) {
   return Math.round(Number(value || 0) * 100) / 100;
@@ -183,8 +185,123 @@ async function logPricingAudit(payload) {
   }
 }
 
+/**
+ * Occupancy-based dynamic pricing:
+ * dynamicPrice = basePrice × [1 + (1 - seatsRemaining/totalSeats) × demandFactor]
+ * Surge: 1.0x–2.5x | Discount: 0.8x–1.0x when seats are plentiful
+ */
+function computeOccupancyMultiplier({
+  seatsRemaining = 0,
+  totalSeats = 1,
+  demandFactor = 1,
+  daysUntilDeparture = 30,
+}) {
+  const occupancyRate = 1 - Math.min(seatsRemaining / Math.max(totalSeats, 1), 1);
+  let multiplier = 1 + occupancyRate * Math.min(Math.max(demandFactor, 0), 1.5);
+
+  if (daysUntilDeparture <= 3) {
+    multiplier += 0.1;
+  } else if (daysUntilDeparture <= 7) {
+    multiplier += 0.05;
+  }
+
+  if (occupancyRate < 0.3) {
+    multiplier = Math.max(0.8, multiplier - 0.15);
+  }
+
+  return Math.min(Math.max(multiplier, 0.8), 2.5);
+}
+
+function buildPricingCacheKey(context) {
+  return [
+    context.packageId || "",
+    context.tourId || "",
+    context.baseAmount,
+    context.adults,
+    computeRemainingSeats(context.tourData),
+  ].join(":");
+}
+
+async function calculateOccupancyBasedPrice(context = {}) {
+  const cacheKey = buildPricingCacheKey(context);
+  const cached = pricingCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < PRICING_CACHE_TTL_MS) {
+    return cached.result;
+  }
+
+  const {
+    baseAmount = 0,
+    travelDate = new Date(),
+    packageId,
+    tourId,
+    tourData,
+    userId,
+    adults = 1,
+    demandFactor = 1,
+  } = context;
+
+  const base = roundCurrency(baseAmount);
+  const remainingSeats = computeRemainingSeats(tourData);
+  const totalSeats =
+    (tourData?.lowerSeats?.length || 0) +
+    (tourData?.upperSeats?.length || 0) +
+    (tourData?.seats?.length || 0) ||
+    tourData?.totalSeats ||
+    1;
+
+  const daysUntilDeparture = Math.max(
+    0,
+    Math.ceil((new Date(travelDate) - new Date()) / (1000 * 60 * 60 * 24))
+  );
+
+  const multiplier = computeOccupancyMultiplier({
+    seatsRemaining: remainingSeats,
+    totalSeats,
+    demandFactor,
+    daysUntilDeparture,
+  });
+
+  const dynamicAmount = roundCurrency(base * multiplier);
+  const priceChangePercent = Math.round((multiplier - 1) * 100);
+
+  const ruleResult = await calculateDynamicPrice({
+    baseAmount: dynamicAmount,
+    travelDate,
+    packageId,
+    tourId,
+    tourData,
+    userId,
+    adults,
+  });
+
+  const urgencyMessage =
+    remainingSeats <= 5 && priceChangePercent > 0
+      ? `Only ${remainingSeats} seats left! Price increased by ${priceChangePercent}%`
+      : priceChangePercent < 0
+        ? `Great deal! Price reduced by ${Math.abs(priceChangePercent)}%`
+        : null;
+
+  const result = {
+    ...ruleResult,
+    baseAmount: base,
+    dynamicMultiplier: multiplier,
+    dynamicAmount,
+    priceChangePercent,
+    urgencyMessage,
+    seatsRemaining: remainingSeats,
+    totalSeats,
+    daysUntilDeparture,
+    cachedAt: new Date().toISOString(),
+  };
+
+  pricingCache.set(cacheKey, { ts: Date.now(), result });
+  return result;
+}
+
 module.exports = {
   calculateDynamicPrice,
+  calculateOccupancyBasedPrice,
+  computeOccupancyMultiplier,
   logPricingAudit,
   roundCurrency,
 };

@@ -1,4 +1,9 @@
 const { bookingModel } = require("../models/bookingModel");
+// Ensure populate refs resolve when booking routes load in isolation.
+require("../models/packageModel");
+require("../models/tourModel");
+require("../models/cityModel");
+require("../models/userModel");
 const ExcelJS = require("exceljs");
 const DEFAULT_PAGE_SIZE = parseInt(process.env.DEFAULT_PAGE_SIZE || "20", 10);
 const mongoose = require("mongoose");
@@ -6,6 +11,53 @@ const { s3Client } = require("../middleware/s3Upload");
 const { PutObjectCommand } = require("@aws-sdk/client-s3");
 const fs = require("fs");
 const path = require("path");
+
+function generateUniqueCode(prefix = "INV") {
+  const unique = `${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .substring(2, 8)}`.toUpperCase();
+  return `${prefix}-${unique}`;
+}
+
+async function ensureUniqueInvoiceNumber(model) {
+  const rawId = generateUniqueCode("INV");
+  async function tryCandidate(value, attempt = 0) {
+    const candidate = attempt === 0 ? value : `${value}-${attempt}`;
+    const exists = await model.exists({ invoiceNumber: candidate });
+    if (exists) return tryCandidate(value, attempt + 1);
+    return candidate;
+  }
+  return tryCandidate(rawId);
+}
+
+function applyBookingStatusFilter(normalizedFilter) {
+  if (!Object.prototype.hasOwnProperty.call(normalizedFilter, "bookingStatus")) {
+    return;
+  }
+
+  const value = normalizedFilter.bookingStatus;
+  if (value == null) {
+    delete normalizedFilter.bookingStatus;
+    return;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed) {
+      normalizedFilter.bookingStatus = trimmed;
+    } else {
+      delete normalizedFilter.bookingStatus;
+    }
+    return;
+  }
+
+  // Preserve Mongo operators such as { $in: [...] } from tab filters.
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return;
+  }
+
+  delete normalizedFilter.bookingStatus;
+}
 
 class BookingController {
   constructor(model = bookingModel) {
@@ -62,12 +114,7 @@ class BookingController {
     }
 
     if (Object.prototype.hasOwnProperty.call(normalizedFilter, "bookingStatus")) {
-      const value = normalizedFilter.bookingStatus;
-      if (value && value.trim()) {
-        normalizedFilter.bookingStatus = value.trim();
-      } else {
-        delete normalizedFilter.bookingStatus;
-      }
+      applyBookingStatusFilter(normalizedFilter);
     }
 
     const parsedPage = parseInt(options.page, 10);
@@ -124,8 +171,11 @@ class BookingController {
   async getBookingsByUser(filter = {}, options = {}) {
     const normalizedFilter = { ...filter };
 
-    normalizedFilter.userId = options.userId;
-    console.log(options.userId);
+    if (options.userId && mongoose.Types.ObjectId.isValid(options.userId)) {
+      normalizedFilter.userId = new mongoose.Types.ObjectId(options.userId);
+    } else {
+      normalizedFilter.userId = options.userId;
+    }
 
     if (Object.prototype.hasOwnProperty.call(normalizedFilter, "isDisabled")) {
       const raw = normalizedFilter.isDisabled;
@@ -168,12 +218,7 @@ class BookingController {
     }
 
     if (Object.prototype.hasOwnProperty.call(normalizedFilter, "bookingStatus")) {
-      const value = normalizedFilter.bookingStatus;
-      if (value && value.trim()) {
-        normalizedFilter.bookingStatus = value.trim();
-      } else {
-        delete normalizedFilter.bookingStatus;
-      }
+      applyBookingStatusFilter(normalizedFilter);
     }
 
     const parsedPage = parseInt(options.page, 10);
@@ -224,6 +269,93 @@ class BookingController {
         hasNextPage: currentPage < totalPages,
         hasPrevPage: currentPage > 1,
       },
+    };
+  }
+
+  async getBookingHistory(filter = {}, options = {}) {
+    const tab = (filter.tab || "all").toLowerCase();
+    delete filter.tab;
+
+    if (tab === "upcoming") {
+      filter.bookingStatus = { $in: ["Pending", "Confirmed"] };
+    } else if (tab === "past") {
+      filter.bookingStatus = { $in: ["Completed", "Cancelled"] };
+    }
+
+    const result = await this.getBookingsByUser(filter, options);
+
+    const enriched = result.data.map((booking) => {
+      const pkg = booking.selectedPackageId;
+      const tour = booking.selectedTourId;
+      const base =
+        typeof booking.toObject === "function" ? booking.toObject() : { ...booking };
+      return {
+        ...base,
+        packageName: pkg?.packageName || booking.packageName,
+        travelDates: {
+          start: tour?.startDate || booking.travelDate,
+          end: tour?.endDate,
+        },
+        amountPaid: booking.advancePaid || booking.finalAmount || booking.totalAmount,
+        paymentMethod: booking.paymentMethod,
+        status: booking.bookingStatus,
+        paymentStatus: booking.paymentStatus,
+      };
+    });
+
+    return { ...result, data: enriched };
+  }
+
+  async getBookingInvoice(bookingId, userId) {
+    const userFilter = userId
+      ? {
+          userId: mongoose.Types.ObjectId.isValid(userId)
+            ? new mongoose.Types.ObjectId(userId)
+            : userId,
+        }
+      : {};
+
+    const booking = await this.model
+      .findOne({
+        $or: [{ _id: bookingId }, { bookingId }],
+        ...userFilter,
+      })
+      .populate("selectedPackageId", "packageName basePricePerPerson taxPercent childPrice title")
+      .populate("selectedTourId", "tourName startDate endDate perPersonCost")
+      .lean();
+
+    if (!booking) return null;
+
+    const invoiceService = require("../services/invoiceService");
+    let invoiceUrl = booking.invoiceUrl;
+
+    if (!invoiceUrl) {
+      if (!booking.invoiceNumber) {
+        const invoiceNumber = await ensureUniqueInvoiceNumber(this.model);
+        await this.model.updateOne({ _id: booking._id }, { $set: { invoiceNumber } });
+        booking.invoiceNumber = invoiceNumber;
+      }
+
+      invoiceUrl = await invoiceService.generateInvoice(booking);
+      await this.model.updateOne(
+        { _id: booking._id },
+        { $set: { invoiceUrl } }
+      );
+    }
+
+    return {
+      bookingId: booking.bookingId,
+      invoiceNumber: booking.invoiceNumber,
+      invoiceUrl,
+      breakdown: {
+        basePrice: booking.packageCostPerPerson,
+        taxes: booking.gstAmount || booking.taxAmount || 0,
+        discount: booking.discountAmount || 0,
+        total: booking.finalAmount || booking.totalAmount,
+        pricingBreakdown: booking.pricingBreakdown || [],
+      },
+      paymentMethod: booking.paymentMethod,
+      paymentStatus: booking.paymentStatus,
     };
   }
 

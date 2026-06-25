@@ -6,6 +6,7 @@ const router = express.Router();
 const pricingController = new PricingController();
 
 router.post("/calculate", protect, (req, res) => pricingController.calculateQuote(req, res));
+router.post("/calculate/preview", (req, res) => pricingController.calculateQuote(req, res));
 
 router.get("/rules", protect, async (req, res) => {
   try {

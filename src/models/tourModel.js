@@ -13,6 +13,27 @@ const transportTypes = [
   "Mixed",
 ];
 const tourStatuses = ["Draft", "Upcoming", "Ongoing", "Completed", "Cancelled"];
+const seatTypes = ["Window", "Aisle", "Middle", "VIP", "Sleeper"];
+
+const seatSubSchema = new mongoose.Schema(
+  {
+    number: { type: String, required: true },
+    status: {
+      type: String,
+      enum: ["available", "booked", "blocked"],
+      default: "available",
+    },
+    seatType: {
+      type: String,
+      enum: seatTypes,
+      default: "Window",
+    },
+    price: { type: Number, min: 0, default: 0 },
+    lockedUntil: Date,
+    lockedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  },
+  { _id: false }
+);
 
 const tourSchema = new mongoose.Schema(
   {
@@ -100,45 +121,9 @@ const tourSchema = new mongoose.Schema(
       type: Number,
       min: 1,
     },
-    seats: [
-      {
-        number: {
-          type: String,
-          required: true,
-        },
-        status: {
-          type: String,
-          enum: ["available", "booked", "blocked"],
-          default: "available",
-        },
-      },
-    ],
-    lowerSeats: [
-      {
-        number: {
-          type: String,
-          required: true,
-        },
-        status: {
-          type: String,
-          enum: ["available", "booked", "blocked"],
-          default: "available",
-        },
-      },
-    ],
-    upperSeats: [
-      {
-        number: {
-          type: String,
-          required: true,
-        },
-        status: {
-          type: String,
-          enum: ["available", "booked", "blocked"],
-          default: "available",
-        },
-      },
-    ],
+    seats: [seatSubSchema],
+    lowerSeats: [seatSubSchema],
+    upperSeats: [seatSubSchema],
     remainingSeats: {
       type: Number,
       min: 0,
@@ -225,7 +210,28 @@ const tourSchema = new mongoose.Schema(
     },
     bookedSeatNumbers: [{
       type: String,
-    }]
+    }],
+    liveTracking: {
+      currentLocation: {
+        latitude: Number,
+        longitude: Number,
+        address: String,
+      },
+      eta: String,
+      routeProgress: { type: Number, min: 0, max: 100, default: 0 },
+      vehicleStatus: {
+        type: String,
+        enum: ["moving", "stopped", "delayed", "unknown"],
+        default: "unknown",
+      },
+      route: [
+        {
+          latitude: Number,
+          longitude: Number,
+        },
+      ],
+      lastUpdated: Date,
+    },
   },
   { timestamps: true },
 );
@@ -565,4 +571,5 @@ module.exports = {
   tourModel,
   transportTypes,
   tourStatuses,
+  seatTypes,
 };

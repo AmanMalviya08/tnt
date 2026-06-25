@@ -2,6 +2,7 @@ const { pricingRuleModel } = require("../models/pricingRuleModel");
 const { pricingAuditLogModel } = require("../models/pricingAuditLogModel");
 const {
   calculateDynamicPrice,
+  calculateOccupancyBasedPrice,
   logPricingAudit,
 } = require("../services/dynamicPricingService");
 
@@ -53,12 +54,20 @@ class PricingController {
       }
 
       const { tourModel } = require("../models/tourModel");
+      const { packageModel } = require("../models/packageModel");
       let tourData = null;
+      let demandFactor = 1;
+
       if (tourId) {
         tourData = await tourModel.findById(tourId).lean();
       }
 
-      const result = await calculateDynamicPrice({
+      if (packageId) {
+        const pkg = await packageModel.findById(packageId).select("demandFactor").lean();
+        if (pkg?.demandFactor) demandFactor = pkg.demandFactor;
+      }
+
+      const result = await calculateOccupancyBasedPrice({
         baseAmount,
         travelDate: travelDate || new Date(),
         packageId,
@@ -66,6 +75,7 @@ class PricingController {
         tourData,
         userId: req.user?.userId,
         adults: adults || 1,
+        demandFactor,
       });
 
       await logPricingAudit({

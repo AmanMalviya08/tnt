@@ -43,6 +43,9 @@ const notificationRoutes = require('./routes/notificationRoutes');
 
 
 const app = express();
+const http = require("http");
+
+const server = http.createServer(app);
 
 const allowedOrigins = ["http://localhost:3000", "http://192.168.29.16:5500", "http://localhost:14000", "http://localhost:5173", "https://zunjarraoyatra.com", "https://admin.zunjarraoyatra.com", "https://api.zunjarraoyatra.com", "null"];
 
@@ -105,6 +108,12 @@ app.use('/api/locale', require('./routes/localeRoutes'));
 app.use('/api/complaints', require('./routes/complaintRoutes'));
 app.use('/api/guide-wallet', require('./routes/guideWalletRoutes'));
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/tour-share', require('./routes/tourShareRoutes'));
+
+// OpenAPI docs for Phase 2 endpoints
+app.get('/api/docs/openapi.json', (req, res) => {
+  res.sendFile(path.join(__dirname, 'docs/openapi-phase2.json'));
+});
 
 // app.get('/.well-known/assetlinks.json', async (req, res) => {
 //   try {
@@ -141,3 +150,4 @@ app.get('/test-checkout', (req, res) => {
 
 module.exports = app;
 module.exports.connectDB = connectDB;
+module.exports.server = server;

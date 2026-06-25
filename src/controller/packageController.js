@@ -159,6 +159,40 @@ class PackageController {
       }
       delete normalizedFilter.search;
     }
+
+    if (Object.prototype.hasOwnProperty.call(normalizedFilter, "category")) {
+      const value = normalizedFilter.category;
+      if (value && String(value).trim()) {
+        const categories = String(value)
+          .split(",")
+          .map((c) => c.trim())
+          .filter(Boolean);
+        if (categories.length === 1) {
+          normalizedFilter.category = categories[0];
+        } else if (categories.length > 1) {
+          normalizedFilter.category = { $in: categories };
+        }
+      } else {
+        delete normalizedFilter.category;
+      }
+    }
+
+    if (
+      normalizedFilter.excludePopular === "true" ||
+      normalizedFilter.excludePopular === true
+    ) {
+      normalizedFilter.isPopular = { $ne: true };
+      delete normalizedFilter.excludePopular;
+    }
+
+    if (normalizedFilter.isPopular === "true") {
+      normalizedFilter.isPopular = true;
+    } else if (normalizedFilter.isPopular === "false") {
+      normalizedFilter.isPopular = false;
+    } else if (typeof normalizedFilter.isPopular === "string") {
+      delete normalizedFilter.isPopular;
+    }
+
     let priceFilter = undefined;
     if (
       Object.prototype.hasOwnProperty.call(normalizedFilter, "min") &&
@@ -402,6 +436,72 @@ class PackageController {
     const travelPackage = new this.model(duplicate);
 
     return travelPackage.save();
+  }
+
+  async getFilterData() {
+    const [categories, priceRange, durationRange] = await Promise.all([
+      this.model.distinct("category", { isDisabled: false, status: "Active" }),
+      this.model.aggregate([
+        { $match: { isDisabled: false, status: "Active" } },
+        {
+          $group: {
+            _id: null,
+            minPrice: { $min: "$basePricePerPerson" },
+            maxPrice: { $max: "$basePricePerPerson" },
+          },
+        },
+      ]),
+      this.model.aggregate([
+        { $match: { isDisabled: false, status: "Active" } },
+        {
+          $group: {
+            _id: null,
+            minDuration: { $min: "$durationDays" },
+            maxDuration: { $max: "$durationDays" },
+          },
+        },
+      ]),
+    ]);
+
+    const { packageCategories } = require("../models/packageModel");
+
+    return {
+      categories: packageCategories,
+      activeCategories: categories.filter(Boolean),
+      priceRange: priceRange[0] || { minPrice: 0, maxPrice: 0 },
+      durationRange: durationRange[0] || { minDuration: 1, maxDuration: 30 },
+    };
+  }
+
+  async getPopularPackages(options = {}) {
+    const parsedLimit = parseInt(options.limit, 10);
+    const limit = !Number.isNaN(parsedLimit) && parsedLimit > 0 ? parsedLimit : 20;
+    const parsedPage = parseInt(options.page, 10);
+    const page = !Number.isNaN(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+
+    const filter = { isDisabled: false, status: "Active", isPopular: true };
+    const [items, totalItems] = await Promise.all([
+      this.model
+        .find(filter)
+        .populate("cityIds")
+        .sort({ bookingCountLast30Days: -1, totalBookings: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      this.model.countDocuments(filter),
+    ]);
+
+    return {
+      data: items,
+      pagination: {
+        totalItems,
+        totalPages: Math.max(Math.ceil(totalItems / limit), 1),
+        pageSize: limit,
+        currentPage: page,
+        hasNextPage: page * limit < totalItems,
+        hasPrevPage: page > 1,
+      },
+    };
   }
 }
 
