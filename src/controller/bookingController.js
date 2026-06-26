@@ -289,8 +289,15 @@ class BookingController {
       const tour = booking.selectedTourId;
       const base =
         typeof booking.toObject === "function" ? booking.toObject() : { ...booking };
+      const departureDateTime =
+        base.departureDateTime ||
+        tour?.departureDateTime ||
+        tour?.startDate ||
+        base.travelStartDate;
       return {
         ...base,
+        departureDateTime,
+        departureTimezone: base.departureTimezone || tour?.departureTimezone || "Asia/Kolkata",
         packageName: pkg?.packageName || booking.packageName,
         travelDates: {
           start: tour?.startDate || booking.travelDate,
@@ -304,6 +311,78 @@ class BookingController {
     });
 
     return { ...result, data: enriched };
+  }
+
+  async getUpcomingBookings(userId, options = {}) {
+    const now = new Date();
+    const page = Math.max(parseInt(options.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(options.limit, 10) || 10, 1), 50);
+    const skip = (page - 1) * limit;
+
+    const userObjectId = mongoose.Types.ObjectId.isValid(userId)
+      ? new mongoose.Types.ObjectId(userId)
+      : userId;
+
+    const filter = {
+      userId: userObjectId,
+      isDisabled: { $ne: true },
+      bookingStatus: { $in: ["Confirmed", "Pending"] },
+      $or: [
+        { departureDateTime: { $gte: now } },
+        {
+          departureDateTime: { $exists: false },
+          travelStartDate: { $gte: now },
+        },
+      ],
+    };
+
+    const [items, totalItems] = await Promise.all([
+      this.model
+        .find(filter)
+        .sort({ departureDateTime: 1, travelStartDate: 1 })
+        .skip(skip)
+        .limit(limit)
+        .populate("selectedPackageId", "packageName title galleryImages")
+        .populate("selectedTourId", "tourName startDate endDate departureDateTime departureTimezone galleryImages cityId")
+        .populate("cityId", "cityName")
+        .lean(),
+      this.model.countDocuments(filter),
+    ]);
+
+    const data = items.map((booking) => {
+      const tour = booking.selectedTourId;
+      const pkg = booking.selectedPackageId;
+      const departureDateTime =
+        booking.departureDateTime ||
+        tour?.departureDateTime ||
+        tour?.startDate ||
+        booking.travelStartDate;
+
+      return {
+        ...booking,
+        departureDateTime,
+        departureTimezone: booking.departureTimezone || tour?.departureTimezone || "Asia/Kolkata",
+        tourName: tour?.tourName || pkg?.packageName || pkg?.title,
+        thumbnail:
+          tour?.galleryImages?.[0] ||
+          pkg?.galleryImages?.[0] ||
+          null,
+      };
+    });
+
+    const totalPages = Math.max(Math.ceil(totalItems / limit) || 1, 1);
+
+    return {
+      data,
+      pagination: {
+        totalItems,
+        totalPages,
+        pageSize: limit,
+        currentPage: page,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+      },
+    };
   }
 
   async getBookingInvoice(bookingId, userId) {

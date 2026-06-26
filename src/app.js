@@ -92,8 +92,11 @@ app.use('/api/about', aboutUs)
 app.use('/api/invoices', invoiceRoutes)
 app.use('/api/checkout', checkoutRoutes)
 app.use('/api/guide', guideRoutes)
+app.use('/api/guide', require('./routes/guideTourLocationRoutes'))
 app.use('/api/razorpay', razorpayRoutes)
 app.use('/api/gallery', galleryRoutes)
+app.use('/api/coupons', require('./routes/couponRoutes'))
+app.use('/api/trip-photos', require('./routes/tripPhotoRoutes'))
 app.use('/api/distributor', distributorRoutes);
 app.use('/api/razorpay-test', razorpayTestRoutes);
 app.use('/api/admin', require('./routes/adminRoutes'));
@@ -109,6 +112,9 @@ app.use('/api/complaints', require('./routes/complaintRoutes'));
 app.use('/api/guide-wallet', require('./routes/guideWalletRoutes'));
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/tour-share', require('./routes/tourShareRoutes'));
+app.use('/api/tour-status', require('./routes/tourStatusRoutes'));
+app.use('/api/user', require('./routes/userPreferencesRoutes'));
+app.use('/api/user/saved-travellers', require('./routes/savedTravellerRoutes'));
 
 // OpenAPI docs for Phase 2 endpoints
 app.get('/api/docs/openapi.json', (req, res) => {

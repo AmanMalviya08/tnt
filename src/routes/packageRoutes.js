@@ -170,9 +170,30 @@ router.patch("/:id/disable", protect, async (req, res) => {
       message: travelPackage.isDisabled
         ? "Package disabled successfully"
         : "Package enabled successfully",
+      data: travelPackage,
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.patch("/:id/feature", protect, async (req, res) => {
+  try {
+    const { isFeatured, isPopular } = req.body || {};
+    const travelPackage = await packageController.togglePackageFeatured(req.params.id, {
+      isFeatured,
+      isPopular,
+    });
+    if (!travelPackage) {
+      return res.status(404).json({ success: false, message: "Package not found" });
+    }
+    res.status(200).json({
+      success: true,
+      message: "Package feature flags updated",
+      data: travelPackage,
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
   }
 });
 

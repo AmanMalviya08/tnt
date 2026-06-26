@@ -5,14 +5,25 @@ class AboutUsController {
     }
 
     async getAboutUsPage() {
-        const page = await this.model.find({});
-        
-        
-        if (!page) {
-            throw new Error('About Us page not found');
+        const pages = await this.model.find({}).sort({ updatedAt: -1 }).lean();
+
+        if (!pages?.length) {
+            return [];
         }
-        
-        return page;
+
+        return pages;
+    }
+
+    async getAboutUsPagePublic() {
+        const page = await this.model
+            .findOne({ isActive: { $ne: false } })
+            .sort({ updatedAt: -1 })
+            .lean();
+
+        if (page) return page;
+
+        const fallback = await this.model.findOne().sort({ updatedAt: -1 }).lean();
+        return fallback || null;
     }
     async createAboutUsPage(payload) {
         

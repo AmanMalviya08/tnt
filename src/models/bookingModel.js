@@ -176,6 +176,14 @@ const bookingSchema = new mongoose.Schema(
     travelEndDate: {
       type: Date,
     },
+    departureDateTime: {
+      type: Date,
+    },
+    departureTimezone: {
+      type: String,
+      trim: true,
+      default: "Asia/Kolkata",
+    },
     durationInDays: {
       type: Number,
       min: 0,
@@ -412,6 +420,10 @@ bookingSchema.pre("save", async function (next) {
       this.durationInDays = duration;
     }
 
+    if (!this.departureDateTime && this.travelStartDate) {
+      this.departureDateTime = this.travelStartDate;
+    }
+
     computeAmounts(this);
 
     return next();
@@ -439,6 +451,13 @@ bookingSchema.pre("findOneAndUpdate", async function (next) {
           update.$set.durationInDays = duration;
         } else {
           update.durationInDays = duration;
+        }
+      }
+      if (payload.travelStartDate && !payload.departureDateTime) {
+        if (update.$set) {
+          update.$set.departureDateTime = payload.travelStartDate;
+        } else {
+          update.departureDateTime = payload.travelStartDate;
         }
       }
     }

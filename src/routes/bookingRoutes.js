@@ -159,6 +159,25 @@ router.get("/user", protect, async (req, res) => {
 
 router.put("/:id", protect, async (req, res) => {
   try {
+    if (req.user?.role === "Traveler") {
+      const existing = await bookingController.getBookingById(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ success: false, message: "Booking not found" });
+      }
+      if (String(existing.userId) !== String(req.user.userId)) {
+        return res.status(403).json({ success: false, message: "You can only update your own booking" });
+      }
+      const allowedKeys = ["documents", "specialRequests", "travelerDetails"];
+      const bodyKeys = Object.keys(req.body || {});
+      const hasDisallowed = bodyKeys.some((key) => !allowedKeys.includes(key));
+      if (hasDisallowed) {
+        return res.status(403).json({
+          success: false,
+          message: "Travelers can only update documents and traveler details",
+        });
+      }
+    }
+
     if (req.body.bookingStatus === "Completed") {
       const existing = await bookingController.getBookingById(req.params.id);
       const wasAlreadyCompleted = existing && existing.bookingStatus === "Completed";
@@ -287,6 +306,27 @@ router.get("/history", protect, async (req, res) => {
       message: "Booking history fetched",
       data: bookings.data,
       pagination: bookings.pagination,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.get("/upcoming", protect, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { page, limit } = req.query || {};
+
+    const result = await bookingController.getUpcomingBookings(userId, {
+      page,
+      limit,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Upcoming bookings fetched",
+      data: result.data,
+      pagination: result.pagination,
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -431,6 +471,15 @@ router.post("/:id/test-payment", protect, async (req, res) => {
     } catch (historyErr) {
       console.warn("[test-payment] History log skipped:", historyErr.message);
     }
+
+    setImmediate(async () => {
+      try {
+        const { generateCouponsForBookings } = require("../services/scratchCouponService");
+        await generateCouponsForBookings([booking]);
+      } catch (err) {
+        console.warn("[test-payment] Scratch coupon skipped:", err.message);
+      }
+    });
 
     return res.status(200).json({
       success: true,

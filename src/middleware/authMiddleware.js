@@ -88,6 +88,7 @@ const routePermissions = [
 
     { path: '/api/packages/', method: 'POST', roles: ['Admin', 'SubAdmin'], exact: true },
     { path: '/api/packages/:id/duplicate', method: 'POST', roles: ['Admin', 'SubAdmin'] },
+    { path: '/api/packages/:id/feature', method: 'PATCH', roles: ['Admin', 'SubAdmin'] },
     { path: '/api/packages/:id/disable', method: 'PATCH', roles: ['Admin', 'SubAdmin'] },
     { path: '/api/packages/:id', method: 'DELETE', roles: ['Admin', 'SubAdmin'] },
     { path: '/api/packages/:id', method: 'PUT', roles: ['Admin', 'SubAdmin'] },
@@ -131,7 +132,7 @@ const routePermissions = [
     { path: '/api/bookings/', method: 'POST', roles: ['Admin', 'SubAdmin', 'Agent'], exact: true },
     { path: '/api/bookings/', method: 'GET', roles: ['Admin', 'SubAdmin', 'Agent'], exact: true },
     { path: '/api/bookings/user', method: 'GET', roles: ['Admin', 'SubAdmin', 'Traveler', 'Agent'], exact: true },
-    { path: '/api/bookings/:id', method: 'PUT', roles: ['Admin', 'SubAdmin', 'Agent'] },
+    { path: '/api/bookings/:id', method: 'PUT', roles: ['Admin', 'SubAdmin', 'Agent', 'Traveler'] },
     { path: '/api/bookings/:id/test-payment', method: 'POST', roles: ['Admin', 'SubAdmin', 'Agent'] },
     { path: '/api/bookings/:id', method: 'DELETE', roles: ['Admin', 'SubAdmin'] },
     { path: '/api/bookings/:id/disable', method: 'PATCH', roles: ['Admin', 'SubAdmin'] },
@@ -190,6 +191,46 @@ const routePermissions = [
     { path: '/api/partial-payment/balance/verify', method: 'POST', roles: ['Traveler', 'Admin', 'SubAdmin'], exact: true },
     { path: '/api/locale/language', method: 'GET', roles: ['Traveler', 'Agent', 'Admin', 'SubAdmin', 'Guide'], exact: true },
     { path: '/api/locale/language', method: 'PUT', roles: ['Traveler', 'Agent', 'Admin', 'SubAdmin', 'Guide'], exact: true },
+
+    // user preferences (theme)
+    { path: '/api/user/preferences', method: 'GET', roles: ['Traveler', 'Agent', 'Admin', 'SubAdmin', 'Guide'], exact: true },
+    { path: '/api/user/preferences', method: 'PATCH', roles: ['Traveler', 'Agent', 'Admin', 'SubAdmin', 'Guide'], exact: true },
+
+    { path: '/api/user/saved-travellers/combined', method: 'GET', roles: ['Traveler'], exact: true },
+    { path: '/api/user/saved-travellers/from-bookings', method: 'GET', roles: ['Traveler'], exact: true },
+    { path: '/api/user/saved-travellers', method: 'GET', roles: ['Traveler'], exact: true },
+    { path: '/api/user/saved-travellers', method: 'POST', roles: ['Traveler'], exact: true },
+    { path: '/api/user/saved-travellers/:id', method: 'PUT', roles: ['Traveler'] },
+    { path: '/api/user/saved-travellers/:id', method: 'DELETE', roles: ['Traveler'] },
+
+    // tour live status
+    { path: '/api/guide/tours/:tourId/location', method: 'POST', roles: ['Admin', 'SubAdmin', 'Guide'] },
+    { path: '/api/tour-status/update', method: 'POST', roles: ['Admin', 'SubAdmin', 'Guide'], exact: true },
+    { path: '/api/tour-status/update/:tourId', method: 'POST', roles: ['Admin', 'SubAdmin', 'Guide'] },
+    { path: '/api/tour-status/:tourId/my-status', method: 'GET', roles: ['Traveler', 'Agent', 'Admin', 'SubAdmin', 'Guide'] },
+    { path: '/api/tour-status/:tourId', method: 'GET', roles: ['Traveler', 'Agent', 'Admin', 'SubAdmin', 'Guide'] },
+    { path: '/api/admin/tours/:tourId/status-board', method: 'GET', roles: ['Admin', 'SubAdmin'] },
+
+    // scratch coupons
+    { path: '/api/coupons/mine', method: 'GET', roles: ['Traveler', 'Agent', 'Admin', 'SubAdmin'], exact: true },
+    { path: '/api/coupons/:id/scratch', method: 'POST', roles: ['Traveler', 'Agent', 'Admin', 'SubAdmin'] },
+    { path: '/api/coupons/:id/redeem', method: 'POST', roles: ['Traveler', 'Agent', 'Admin', 'SubAdmin'] },
+    { path: '/api/admin/coupons', method: 'GET', roles: ['Admin', 'SubAdmin'], exact: true },
+    { path: '/api/admin/coupons/:id/redeem', method: 'PATCH', roles: ['Admin', 'SubAdmin'] },
+
+    // trip photo UGC
+    { path: '/api/trip-photos/upload', method: 'POST', roles: ['Traveler', 'Agent', 'Admin', 'SubAdmin'], exact: true },
+    { path: '/api/trip-photos/tour/:tourId/mine', method: 'GET', roles: ['Traveler', 'Agent', 'Admin', 'SubAdmin'] },
+    { path: '/api/trip-photos/tour/:tourId', method: 'GET', roles: ['Traveler', 'Agent', 'Admin', 'SubAdmin', 'Guest'] },
+    { path: '/api/trip-photos/photo/:photoId/like', method: 'POST', roles: ['Traveler', 'Agent', 'Admin', 'SubAdmin'] },
+    { path: '/api/trip-photos/photo/:photoId', method: 'DELETE', roles: ['Traveler', 'Agent', 'Admin', 'SubAdmin'] },
+    { path: '/api/trip-photos/photo/:photoId/share-link', method: 'GET', roles: ['Traveler', 'Agent', 'Admin', 'SubAdmin', 'Guest'] },
+    { path: '/api/admin/gallery/pending', method: 'GET', roles: ['Admin', 'SubAdmin'], exact: true },
+    { path: '/api/admin/gallery/bulk-approve', method: 'PATCH', roles: ['Admin', 'SubAdmin'], exact: true },
+    { path: '/api/admin/gallery/:id/approve', method: 'PATCH', roles: ['Admin', 'SubAdmin'] },
+    { path: '/api/admin/gallery/:id', method: 'DELETE', roles: ['Admin', 'SubAdmin'] },
+
+    { path: '/api/about/', method: 'PUT', roles: ['Admin', 'SubAdmin'], exact: true },
 
 ]
 

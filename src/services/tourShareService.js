@@ -1,6 +1,7 @@
 const { tourShareLinkModel } = require("../models/tourShareLinkModel");
 const { tourModel } = require("../models/tourModel");
 const { bookingModel } = require("../models/bookingModel");
+const tourStatusService = require("./tourStatusService");
 
 const APP_DEEP_LINK_BASE =
   process.env.APP_DEEP_LINK_BASE || "https://zunjarraoyatra.com/track";
@@ -90,9 +91,17 @@ async function getPublicTrackingData(shareToken) {
 
   const tracking = tour.liveTracking || {};
 
+  let journeyStatus = null;
+  try {
+    journeyStatus = await tourStatusService.getTourStatusHistory(tour._id, { limit: 50 });
+  } catch (err) {
+    console.warn("[tourShare] journey status load failed:", err.message);
+  }
+
   return {
     tour: {
       id: tour._id,
+      tourId: tour._id,
       tourName: tour.tourName,
       status: tour.status,
       startDate: tour.startDate,
@@ -111,6 +120,14 @@ async function getPublicTrackingData(shareToken) {
     lastUpdated: tracking.lastUpdated || null,
     route: tracking.route || [],
     bookedSeats: latestBooking?.selectedSeats || [],
+    journeyStatus: journeyStatus
+      ? {
+          currentStatus: journeyStatus.currentStatus,
+          stages: journeyStatus.stages,
+          history: journeyStatus.history,
+          tourLifecycleStatus: journeyStatus.tourLifecycleStatus,
+        }
+      : null,
   };
 }
 

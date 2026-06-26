@@ -385,6 +385,22 @@ class PackageController {
     return this.model.deleteOne({ _id: id });
   }
 
+  async togglePackageFeatured(id, options = {}) {
+    const existing = await this.model.findById(id).select("isFeatured isPopular");
+    if (!existing) return null;
+
+    const update = {};
+    if (options.isFeatured !== undefined) {
+      update.isFeatured = Boolean(options.isFeatured);
+    } else if (options.isPopular !== undefined) {
+      update.isPopular = Boolean(options.isPopular);
+    } else {
+      update.isFeatured = !existing.isFeatured;
+    }
+
+    return this.model.findByIdAndUpdate(id, { $set: update }, { new: true });
+  }
+
   async setPackageDisabled(id, options = {}) {
     const existing = await this.model.findById(id).select("isDisabled");
     if (!existing) {

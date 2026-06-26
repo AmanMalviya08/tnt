@@ -137,6 +137,21 @@ const tourSchema = new mongoose.Schema(
       enum: tourStatuses,
       default: "Draft",
     },
+    currentJourneyStatus: {
+      type: String,
+      trim: true,
+    },
+    currentJourneyStatusAt: {
+      type: Date,
+    },
+    departureDateTime: {
+      type: Date,
+    },
+    departureTimezone: {
+      type: String,
+      trim: true,
+      default: "Asia/Kolkata",
+    },
     inclusions: {
       type: [String],
       default: [],
@@ -364,6 +379,13 @@ async function populateSlugAndCode(doc) {
 function handlePreSave(next) {
   syncBookedSeats(this);
   autoDuration(this);
+
+  if (!this.departureDateTime && this.startDate) {
+    this.departureDateTime = this.startDate;
+  }
+  if (!this.departureTimezone) {
+    this.departureTimezone = "Asia/Kolkata";
+  }
 
   // Calculate totalUpperSeats from totalSeats - totalLowerSeats
   if (this.totalSeats && this.totalLowerSeats !== undefined) {

@@ -26,6 +26,14 @@ function initSocket(server) {
     socket.on("leave-tour-seats", (tourId) => {
       if (tourId) socket.leave(`seats:${tourId}`);
     });
+
+    socket.on("join-tour-status", (tourId) => {
+      if (tourId) socket.join(`tour-status:${tourId}`);
+    });
+
+    socket.on("leave-tour-status", (tourId) => {
+      if (tourId) socket.leave(`tour-status:${tourId}`);
+    });
   });
 
   console.log("[Socket.io] Initialized");
@@ -48,9 +56,46 @@ function emitSeatUpdate(tourId, data) {
   }
 }
 
+const tourStatusStreamListeners = new Map();
+
+function emitTourStatusUpdate(tourId, data) {
+  if (!tourId) return;
+  const room = `tour-status:${tourId}`;
+  if (io) {
+    io.to(room).emit("tour-status-update", data);
+  }
+  const listeners = tourStatusStreamListeners.get(String(tourId));
+  if (listeners) {
+    listeners.forEach((cb) => {
+      try {
+        cb(data);
+      } catch (err) {
+        console.warn("[Socket] tour-status listener error:", err.message);
+      }
+    });
+  }
+}
+
+function subscribeTourStatusStream(tourId, callback) {
+  const key = String(tourId);
+  if (!tourStatusStreamListeners.has(key)) {
+    tourStatusStreamListeners.set(key, new Set());
+  }
+  tourStatusStreamListeners.get(key).add(callback);
+  return () => {
+    const set = tourStatusStreamListeners.get(key);
+    if (set) {
+      set.delete(callback);
+      if (set.size === 0) tourStatusStreamListeners.delete(key);
+    }
+  };
+}
+
 module.exports = {
   initSocket,
   getIO,
   emitTourTrackingUpdate,
   emitSeatUpdate,
+  emitTourStatusUpdate,
+  subscribeTourStatusStream,
 };

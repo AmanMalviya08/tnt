@@ -7,13 +7,14 @@ class LocaleController {
     try {
       const user = await userModel
         .findById(req.user.userId)
-        .select("preferences.language")
+        .select("preferences.language preferences.theme")
         .lean();
 
       return res.status(200).json({
         success: true,
         data: {
           language: user?.preferences?.language || "en",
+          theme: user?.preferences?.theme || "system",
           supportedLanguages: SUPPORTED_LANGUAGES,
         },
       });

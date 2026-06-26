@@ -128,6 +128,12 @@ const userSchema = new mongoose.Schema(
         enum: ["en", "hi", "mr", "gu"],
         default: "en",
       },
+      theme: {
+        type: String,
+        trim: true,
+        enum: ["light", "dark", "system"],
+        default: "system",
+      },
     },
     isDisabled: {
       type: Boolean,

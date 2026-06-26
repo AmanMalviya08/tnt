@@ -39,7 +39,7 @@ const {
   consumeDiscount,
 } = require("../controller/yatraLoyaltyController");
 const {
-  calculateDynamicPrice,
+  calculateOccupancyBasedPrice,
   logPricingAudit,
   roundCurrency,
 } = require("../services/dynamicPricingService");
@@ -272,8 +272,9 @@ const createBookingsFromCart = async (req, res) => {
     const bookingType = tourData ? "Group Tour" : "Package Tour";
     const isGroupTour = bookingType === "Group Tour";
 
-    // Dynamic pricing surcharges
-    const dynamicPricing = await calculateDynamicPrice({
+    // Dynamic pricing — occupancy multiplier + rule surcharges (matches preview API)
+    const demandFactor = packageData?.demandFactor || 1;
+    const dynamicPricing = await calculateOccupancyBasedPrice({
       baseAmount: totalAmount,
       travelDate: finalTravelStartDate,
       packageId: packageData?._id,
@@ -281,6 +282,7 @@ const createBookingsFromCart = async (req, res) => {
       tourData: tourData?.toObject?.() || tourData,
       userId,
       adults,
+      demandFactor,
     });
 
     totalAmount = dynamicPricing.subtotalBeforeTax;
@@ -334,6 +336,8 @@ const createBookingsFromCart = async (req, res) => {
       children,
       travelStartDate: finalTravelStartDate,
       travelEndDate: finalTravelEndDate,
+      departureDateTime: tourData?.departureDateTime || finalTravelStartDate,
+      departureTimezone: tourData?.departureTimezone || "Asia/Kolkata",
       packageCostPerPerson,
       childCostPerPerson: childPrice,
       selectedAddOns,
@@ -1259,6 +1263,16 @@ const confirmPayment = async (req, res) => {
         }
       } catch (err) {
         console.error("[confirmPayment] Payment history error:", err.message);
+      }
+    });
+
+    setImmediate(async () => {
+      try {
+        const { generateCouponsForBookings } = require("../services/scratchCouponService");
+        const bookings = await bookingModel.find({ bookingId: { $in: order.bookingIds } });
+        await generateCouponsForBookings(bookings);
+      } catch (err) {
+        console.error("[confirmPayment] Scratch coupon error:", err.message);
       }
     });
 
