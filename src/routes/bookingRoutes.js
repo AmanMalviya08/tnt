@@ -18,11 +18,18 @@ const {
 const router = express.Router();
 const bookingController = new BookingController(bookingModel);
 
-router.post("/", async (req, res) => {
+router.post("/", protect, async (req, res) => {
   try {
     console.log("Request Body:", req.body);
 
     const payload = { ...req.body };
+    const { resolveAssignedAgentFromReferral, creditAgentCommissionForBooking } = require("../services/agentCommissionService");
+
+    if (req.user?.role === "Agent" && req.user?.userId) {
+      payload.assignedAgent = req.user.userId;
+    } else if (payload.referralCode && !payload.assignedAgent) {
+      payload.assignedAgent = await resolveAssignedAgentFromReferral(payload.referralCode);
+    }
 
     const isGroupTour = payload.bookingType === "Group Tour";
     const userId = payload.userId;
@@ -50,6 +57,12 @@ router.post("/", async (req, res) => {
           await creditGuideCommissionForBooking(booking._id, { trigger: "payment" });
         } catch (err) {
           console.error("[booking/create] Guide commission credit failed:", err.message);
+        }
+        try {
+          const { creditAgentCommissionForBooking } = require("../services/agentCommissionService");
+          await creditAgentCommissionForBooking(booking._id);
+        } catch (err) {
+          console.error("[booking/create] Agent commission credit failed:", err.message);
         }
       });
     }
@@ -219,6 +232,17 @@ router.put("/:id", protect, async (req, res) => {
       });
     }
 
+    if (booking.paymentStatus === "Refunded") {
+      setImmediate(async () => {
+        try {
+          const { deductAgentCommissionForBooking } = require("../services/agentCommissionService");
+          await deductAgentCommissionForBooking(booking._id, { reason: "refunded" });
+        } catch (err) {
+          console.error("[booking/update] Agent commission deduction failed:", err.message);
+        }
+      });
+    }
+
     res.status(200).json({
       success: true,
       message: "Booking updated successfully",
@@ -266,6 +290,17 @@ router.patch("/:id/cancel", protect, async (req, res) => {
       return res
         .status(404)
         .json({ success: false, message: "Booking not found" });
+    }
+
+    if (booking.paymentStatus === "Paid" || booking.assignedAgent) {
+      setImmediate(async () => {
+        try {
+          const { deductAgentCommissionForBooking } = require("../services/agentCommissionService");
+          await deductAgentCommissionForBooking(booking._id, { reason: "cancelled" });
+        } catch (err) {
+          console.error("[booking/cancel] Agent commission deduction failed:", err.message);
+        }
+      });
     }
 
     res.status(200).json({

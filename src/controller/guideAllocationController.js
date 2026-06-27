@@ -314,6 +314,8 @@ class GuideAllocationController {
 
     const guideObjectId = allocation.guideId?._id || allocation.guideId;
     const tourObjectId = tour?._id || allocation.tourId;
+    const bookingTourObjectId = booking?.selectedTourId?._id || booking?.selectedTourId || null;
+    const resolvedTourId = tourObjectId || bookingTourObjectId || null;
     const bookingObjectId = booking?._id || allocation.bookingId;
 
     const Review = mongoose.model("Review");
@@ -335,7 +337,9 @@ class GuideAllocationController {
     if (bookingObjectId) reviewOr.push({ bookingId: bookingObjectId });
     if (reviewOr.length) reviewFilter.$or = reviewOr;
 
-    const [reviews, tourLogs, commissionTxn] = await Promise.all([
+    const guideExpenseModel = require("../models/guideExpenseModel");
+
+    const [reviews, tourLogs, commissionTxn, expenses] = await Promise.all([
       Review.find(reviewFilter)
         .populate("userId", "firstName lastName avatarUrl phone")
         .sort({ createdAt: -1 })
@@ -346,6 +350,10 @@ class GuideAllocationController {
         guideId: guideObjectId,
         category: "Guide Commission",
       }).select("amount commissionPercent bookingAmount status").lean(),
+      guideExpenseModel
+        .find({ allocationId: allocation._id })
+        .sort({ createdAt: -1 })
+        .lean(),
     ]);
 
     const itineraryNotes = statusItems
@@ -363,6 +371,7 @@ class GuideAllocationController {
 
     return {
       ...allocation,
+      tourId: resolvedTourId,
       name,
       tourStartDate: (resolvedTour || tour)?.startDate || booking?.travelStartDate || allocation.startDate,
       pickupTime: GuideAllocationController.resolvePickupTime({
@@ -399,6 +408,10 @@ class GuideAllocationController {
             status: commissionTxn.status || null,
           }
         : null,
+      expenses: expenses || [],
+      approvedExpenseTotal: (expenses || [])
+        .filter((item) => item.status === "Approved")
+        .reduce((sum, item) => sum + Number(item.amount || 0), 0),
     };
   }
 
@@ -649,7 +662,7 @@ class GuideAllocationController {
                 reviews: 1,
 
                 // Tour / Booking IDs for reference
-                tourId: { $ifNull: ["$tour._id", null] },
+                tourId: { $ifNull: ["$tour._id", "$bookingTour._id"] },
                 bookingId: { $ifNull: ["$booking._id", null] },
                 bookingRef: { $ifNull: ["$booking.bookingId", null] },
 
@@ -701,7 +714,35 @@ class GuideAllocationController {
     } else if (typeof filter.status === "string") {
       filter.status = [filter.status];
     }
-    return this.getAllocationsByGuideUserId(userId, filter, options);
+    const result = await this.getAllocationsByGuideUserId(userId, filter, options);
+    const allocationIds = (result.data || []).map((item) => item._id).filter(Boolean);
+    if (!allocationIds.length) return result;
+
+    const guideExpenseModel = require("../models/guideExpenseModel");
+    const expenses = await guideExpenseModel
+      .find({ allocationId: { $in: allocationIds } })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const expensesByAllocation = expenses.reduce((acc, expense) => {
+      const key = String(expense.allocationId);
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(expense);
+      return acc;
+    }, {});
+
+    result.data = result.data.map((allocation) => {
+      const allocationExpenses = expensesByAllocation[String(allocation._id)] || [];
+      return {
+        ...allocation,
+        expenses: allocationExpenses,
+        approvedExpenseTotal: allocationExpenses
+          .filter((item) => item.status === "Approved")
+          .reduce((sum, item) => sum + Number(item.amount || 0), 0),
+      };
+    });
+
+    return result;
   }
 
   async exportGuideAllocationsExcel(req, res) {

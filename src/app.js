@@ -113,6 +113,7 @@ app.use('/api/guide-wallet', require('./routes/guideWalletRoutes'));
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/tour-share', require('./routes/tourShareRoutes'));
 app.use('/api/tour-status', require('./routes/tourStatusRoutes'));
+app.use('/api/guide-ops', require('./routes/guideTourOpsRoutes'));
 app.use('/api/user', require('./routes/userPreferencesRoutes'));
 app.use('/api/user/saved-travellers', require('./routes/savedTravellerRoutes'));
 

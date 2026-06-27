@@ -359,9 +359,16 @@ exports.approveWithdrawal = async (req, res) => {
             });
         }
 
-        transaction.status = "Completed";
+        transaction.status = "Approved";
         transaction.paymentTransactionId = paymentTransactionId;
-        transaction.transactionId = paymentTransactionId; // Map manual ID to transactionId as well
+        transaction.transactionId = paymentTransactionId;
+        transaction.statusHistory = transaction.statusHistory || [];
+        transaction.statusHistory.push({
+          status: "Approved",
+          changedBy: req.user?.userId,
+          note: `Payment ref: ${paymentTransactionId}`,
+          changedAt: new Date(),
+        });
         await transaction.save();
 
         setImmediate(() => {

@@ -2,11 +2,20 @@ const express = require("express");
 const LeadController = require("../controller/leadController");
 const { leadModel } = require("../models/leadModel");
 const { notifyLeadCreated, notifyLeadUpdated } = require("../services/leadNotificationService");
+const { protect } = require("../middleware/authMiddleware");
+const { loadAgentProfile, requireCompanyAgent } = require("../middleware/agentTypeMiddleware");
 
 const router = express.Router();
 const leadController = new LeadController(leadModel);
 
-router.get("/meta/enums", async (req, res) => {
+function agentLeadsOnly(req, res, next) {
+  if (["Admin", "SubAdmin"].includes(req.user?.role)) {
+    return next();
+  }
+  return loadAgentProfile(req, res, () => requireCompanyAgent(req, res, next));
+}
+
+router.get("/meta/enums", protect, agentLeadsOnly, async (req, res) => {
   try {
     const data = await leadController.getLeadFormMeta();
     res.status(200).json({ success: true, data });
@@ -15,7 +24,7 @@ router.get("/meta/enums", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", protect, agentLeadsOnly, async (req, res) => {
   try {
     const lead = await leadController.createLead(req.body);
     setImmediate(() => {
@@ -27,15 +36,18 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.get("/export-leads/excel", async (req, res) => {
+router.get("/export-leads/excel", protect, async (req, res) => {
   try {
+    if (!["Admin", "SubAdmin"].includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: "Admin access only" });
+    }
     await leadController.exportLeadsExcel(req, res);
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-router.get("/", async (req, res) => {
+router.get("/", protect, agentLeadsOnly, async (req, res) => {
   try {
     const { page, limit, sort, ...filters } = req.query;
     const { data, pagination } = await leadController.getLeads(filters, { page, limit, sort });
@@ -50,7 +62,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", protect, agentLeadsOnly, async (req, res) => {
   try {
     const lead = await leadController.getLeadById(req.params.id);
     if (!lead) {
@@ -62,7 +74,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", protect, agentLeadsOnly, async (req, res) => {
   try {
     const existing = await leadModel.findById(req.params.id).select("followUpDate");
     const lead = await leadController.updateLead(req.params.id, req.body);
@@ -80,8 +92,11 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", protect, async (req, res) => {
   try {
+    if (!["Admin", "SubAdmin"].includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: "Admin access only" });
+    }
     const lead = await leadController.deleteLead(req.params.id);
     if (!lead) {
       return res.status(404).json({ success: false, message: "Lead not found" });

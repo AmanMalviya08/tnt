@@ -326,6 +326,94 @@ class AdminController {
             });
         }
     }
+
+    async getCommissionReport(req, res) {
+        try {
+            const Transaction = require("../models/transactionModel");
+            const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+            const start = new Date(`${year}-01-01T00:00:00.000Z`);
+            const end = new Date(`${year}-12-31T23:59:59.999Z`);
+
+            const [summary, byAgent] = await Promise.all([
+                Transaction.aggregate([
+                    {
+                        $match: {
+                            category: "Commission",
+                            type: "Credit",
+                            createdAt: { $gte: start, $lte: end },
+                        },
+                    },
+                    {
+                        $group: {
+                            _id: null,
+                            totalAmount: { $sum: "$amount" },
+                            count: { $sum: 1 },
+                        },
+                    },
+                ]),
+                Transaction.aggregate([
+                    {
+                        $match: {
+                            category: "Commission",
+                            type: "Credit",
+                            createdAt: { $gte: start, $lte: end },
+                        },
+                    },
+                    {
+                        $group: {
+                            _id: "$userId",
+                            totalAmount: { $sum: "$amount" },
+                            count: { $sum: 1 },
+                        },
+                    },
+                    { $sort: { totalAmount: -1 } },
+                    { $limit: 50 },
+                ]),
+            ]);
+
+            res.status(200).json({
+                success: true,
+                data: {
+                    year,
+                    summary: summary[0] || { totalAmount: 0, count: 0 },
+                    byAgent,
+                },
+            });
+        } catch (error) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+
+    async exportAnalytics(req, res) {
+        try {
+            const { sendPdfExport } = require("../utils/exportHelper");
+            const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+
+            const mockRes = {
+                statusCode: 200,
+                body: null,
+                status(code) { this.statusCode = code; return this; },
+                json(data) { this.body = data; return this; },
+            };
+            await this.getDashboardAnalytics({ query: { year } }, mockRes);
+            const analytics = mockRes.body?.data || {};
+
+            const rows = [
+                { metric: "Total Users", value: analytics.users?.total ?? 0 },
+                { metric: "Total Agents", value: analytics.agents?.total ?? 0 },
+                { metric: "Total Bookings", value: analytics.bookings?.total ?? 0 },
+                { metric: "Completed Bookings", value: analytics.bookings?.completed ?? 0 },
+                { metric: "Total Guides", value: analytics.guides?.total ?? 0 },
+            ];
+            const columns = [
+                { label: "Metric", get: (r) => r.metric, weight: 2 },
+                { label: "Value", get: (r) => r.value, weight: 1, format: "number" },
+            ];
+            return sendPdfExport(res, `analytics-${year}`, `Aggregate Report ${year}`, rows, columns);
+        } catch (error) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
 }
 
 // Bind methods to the instance to avoid 'this' context issues when passing as callback
@@ -333,5 +421,7 @@ const adminController = new AdminController();
 adminController.getDashboardAnalytics = adminController.getDashboardAnalytics.bind(adminController);
 adminController.getMonthlyData = adminController.getMonthlyData.bind(adminController);
 adminController.diagnoseSystem = adminController.diagnoseSystem.bind(adminController);
+adminController.getCommissionReport = adminController.getCommissionReport.bind(adminController);
+adminController.exportAnalytics = adminController.exportAnalytics.bind(adminController);
 
 module.exports = adminController;

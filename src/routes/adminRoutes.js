@@ -8,6 +8,8 @@ const tripPhotoController = require("../controller/tripPhotoController");
 const router = express.Router();
 
 router.get("/analytics", protect, adminController.getDashboardAnalytics);
+router.get("/analytics/export", protect, adminController.exportAnalytics);
+router.get("/commission-report", protect, adminController.getCommissionReport);
 router.get("/diagnose", adminController.diagnoseSystem);
 router.post("/notifications/send", protect, notificationController.sendAdminNotification);
 router.get("/tours/:tourId/status-board", protect, (req, res) => {

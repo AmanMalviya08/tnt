@@ -68,6 +68,7 @@ const createBookingsFromCart = async (req, res) => {
       checkInDate,
       selectedSeats = [],
       paymentPlan = "full",
+      referralCode,
     } = req.body;
 
     // Validate ObjectIds before querying to prevent BSON/Cast Errors
@@ -175,7 +176,11 @@ const createBookingsFromCart = async (req, res) => {
 
     const companyGstNumber = company?.gstNumber || "";
     const companyTaxPercent = company?.tax || 0;
-    const assignedAgent = agent ? userId : undefined;
+    let assignedAgent = agent ? userId : undefined;
+    if (!assignedAgent && referralCode) {
+      const { resolveAssignedAgentFromReferral } = require("../services/agentCommissionService");
+      assignedAgent = await resolveAssignedAgentFromReferral(referralCode);
+    }
 
     const travelers = Array.isArray(travelerDetailsMap)
       ? travelerDetailsMap
@@ -1355,8 +1360,11 @@ const createAgentPaidOrder = async (req, res) => {
   try {
     const { agentId } = req.params;
 
+    if (!mongoose.Types.ObjectId.isValid(agentId)) {
+      return res.status(400).json({ success: false, message: "Invalid agent user id" });
+    }
+
     const agent = await agentModel.findOne({ userId: new mongoose.Types.ObjectId(agentId) });
-    console.log("inside here", agent)
     if (!agent) {
       return res.status(404).json({ success: false, message: "Agent not found" });
     }
@@ -1365,39 +1373,63 @@ const createAgentPaidOrder = async (req, res) => {
     }
 
     const company = await Company.findOne();
-    const fee = company?.agentPaidFee || 0;
+    const fee = Number(company?.agentPaidFee) || 0;
     if (fee <= 0) {
       return res.status(400).json({ success: false, message: "Agent paid fee is not configured" });
     }
 
-    const razorpayOrder = await razorpay.orders.create({
-      amount: fee * 100, // paise
+    const amountInPaise = Math.round(fee * 100);
+    if (amountInPaise < 100) {
+      return res.status(400).json({
+        success: false,
+        message: "Agent paid fee must be at least ₹1",
+      });
+    }
+
+    const {
+      order: razorpayOrder,
+      mockPayment,
+      razorpayFallback,
+    } = await createRazorpayOrderSafe(razorpay, {
+      amount: amountInPaise,
       currency: "INR",
-      // receipt: `agent_paid_${agentId}_${Date.now()}`,
+      receipt: `agpay_${Date.now()}`,
       notes: {
-        agentId: agentId,
+        agentId,
+        userId: String(agent.userId),
         purpose: "Agent Paid Subscription",
       },
     });
 
     res.status(201).json({
       success: true,
-      message: "Razorpay order created for agent payment",
+      message: mockPayment
+        ? "Mock payment order created for agent subscription"
+        : "Razorpay order created for agent payment",
+      mockPayment: Boolean(mockPayment),
+      razorpayFallback: Boolean(razorpayFallback),
       razorpayOrder: {
         id: razorpayOrder.id,
         amount: razorpayOrder.amount,
         currency: razorpayOrder.currency,
       },
-      razorpayKeyId: process.env.RAZORPAY_KEY_ID,
+      razorpayKeyId: mockPayment ? null : process.env.RAZORPAY_KEY_ID || null,
+      testMode: process.env.RAZORPAY_KEY_ID?.startsWith("rzp_test_") ?? false,
     });
   } catch (error) {
     console.error("Error creating agent paid order:", error);
-    res.status(500).json({ success: false, message: "Failed to create agent payment order" });
+    const razorpayMessage = error?.error?.description || error?.message;
+    res.status(500).json({
+      success: false,
+      message: "Failed to create agent payment order",
+      error: process.env.NODE_ENV === "development" ? razorpayMessage : undefined,
+    });
   }
 };
 
 const confirmAgentPayment = async (req, res) => {
-  const session = await mongoose.startSession();
+  // const session = await mongoose.startSession();
+  let session = null;
   try {
     const {
       razorpay_order_id,
@@ -1414,53 +1446,108 @@ const confirmAgentPayment = async (req, res) => {
     if (!valid) {
       return res.status(400).json({ success: false, message: "Invalid payment signature" });
     }
-    const agentId = req.user.userId;
 
-    session.startTransaction();
-    console.log("confirm agent", agentId)
-    const agent = await agentModel.findOne({ userId: new mongoose.Types.ObjectId(agentId) }).session(session);
-    console.log("confirm agent", agent)
+    const agentUserId = req.user.userId;
+    if (!mongoose.Types.ObjectId.isValid(agentUserId)) {
+      return res.status(400).json({ success: false, message: "Invalid agent user id" });
+    }
+
+    const isMockPayment =
+      String(razorpay_payment_id || "").startsWith("pay_mock_") ||
+      razorpay_signature === "mock_signature_success";
+
+    session = await startOptionalSession();
+
+    const agent = await applySession(
+      agentModel.findOne({ userId: new mongoose.Types.ObjectId(agentUserId) }),
+      session,
+    );
+
     if (!agent) {
-      await session.abortTransaction();
-      session.endSession();
+      await abortOptionalSession(session);
       return res.status(404).json({ success: false, message: "Agent not found" });
     }
+
     if (agent.isPaid) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({ success: false, message: "Agent is already paid" });
+      await abortOptionalSession(session);
+      return res.status(200).json({
+        success: true,
+        message: "Agent is already a paid agent",
+        mockPayment: isMockPayment,
+        data: agent,
+      });
+    }
+
+    const existingTxn = await applySession(
+      Transaction.findOne({ transactionId: razorpay_payment_id }),
+      session,
+    );
+
+    if (existingTxn) {
+      agent.isPaid = true;
+      await agent.save(saveOptions(session));
+      await commitOptionalSession(session);
+      return res.status(200).json({
+        success: true,
+        message: "Agent payment already confirmed",
+        mockPayment: isMockPayment,
+        data: agent,
+      });
     }
 
     agent.isPaid = true;
-    await agent.save({ session });
+    await agent.save(saveOptions(session));
 
-    // const payment = await razorpay.payments.fetch(razorpay_payment_id);
-    const payment = { method: "upi", amount: 100000 }; // 1000 INR default in cents
+    const company = await applySession(Company.findOne(), session);
+    const paidFee = Number(company?.agentPaidFee) || 0;
+
+    let paymentAmount = paidFee;
+    if (!isMockPayment) {
+      try {
+        const fetched = await razorpay.payments.fetch(razorpay_payment_id);
+        if (fetched?.amount) {
+          paymentAmount = fetched.amount / 100;
+        }
+      } catch {
+        // fall back to configured fee
+      }
+    }
+
+    if (paymentAmount <= 0) {
+      paymentAmount = paidFee;
+    }
 
     await Transaction.create([{
       userId: agent.userId,
-      amount: payment.amount / 100,
+      amount: paymentAmount,
       type: "Debit",
       category: "Subscription",
       status: "Completed",
-      description: "Agent paid subscription fee",
+      description: isMockPayment
+        ? "Agent paid subscription fee (mock payment)"
+        : "Agent paid subscription fee",
       transactionId: razorpay_payment_id,
       createdBy: agent.userId,
-    }], { session });
+    }], saveOptions(session));
 
-    await session.commitTransaction();
-    session.endSession();
+    await commitOptionalSession(session);
 
     res.status(200).json({
       success: true,
-      message: "Agent payment confirmed and marked as paid",
+      message: isMockPayment
+        ? "Mock agent payment confirmed and marked as paid"
+        : "Agent payment confirmed and marked as paid",
+      mockPayment: isMockPayment,
       data: agent,
     });
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
+    await abortOptionalSession(session);
     console.error("Error confirming agent payment:", error);
-    res.status(500).json({ success: false, message: "Failed to confirm agent payment" });
+    res.status(500).json({
+      success: false,
+      message: "Failed to confirm agent payment",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
   }
 };
 
@@ -1489,14 +1576,22 @@ const createAgentPaidOrderDynamic = async (req, res) => {
       return res.status(400).json({ success: false, message: "Agent does not belong to a distributor" });
     }
 
-    const fee = amount;
+    const fee = Number(amount);
+    const amountInPaise = Math.round(fee * 100);
+    if (amountInPaise < 100) {
+      return res.status(400).json({ success: false, message: "Please provide a valid amount (minimum ₹1)" });
+    }
 
-    const razorpayOrder = await razorpay.orders.create({
-      amount: fee * 100,
+    const {
+      order: razorpayOrder,
+      mockPayment,
+      razorpayFallback,
+    } = await createRazorpayOrderSafe(razorpay, {
+      amount: amountInPaise,
       currency: "INR",
-      receipt: `agent_dyn_${agentId}}`,
+      receipt: `agdyn_${Date.now()}`,
       notes: {
-        agentId: agentId,
+        agentId: String(agentId),
         distributorId: distributor._id.toString(),
         purpose: "Agent Paid Subscription (Dynamic)",
       },
@@ -1504,22 +1599,33 @@ const createAgentPaidOrderDynamic = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: "Razorpay order created for agent payment (dynamic pricing)",
+      message: mockPayment
+        ? "Mock payment order created for agent subscription (dynamic pricing)"
+        : "Razorpay order created for agent payment (dynamic pricing)",
+      mockPayment: Boolean(mockPayment),
+      razorpayFallback: Boolean(razorpayFallback),
       razorpayOrder: {
         id: razorpayOrder.id,
         amount: razorpayOrder.amount,
         currency: razorpayOrder.currency,
       },
-      razorpayKeyId: process.env.RAZORPAY_KEY_ID,
+      razorpayKeyId: mockPayment ? null : process.env.RAZORPAY_KEY_ID || null,
+      testMode: process.env.RAZORPAY_KEY_ID?.startsWith("rzp_test_") ?? false,
     });
   } catch (error) {
     console.error("Error creating dynamic agent paid order:", error);
-    res.status(500).json({ success: false, message: "Failed to create agent payment order" });
+    const razorpayMessage = error?.error?.description || error?.message;
+    res.status(500).json({
+      success: false,
+      message: "Failed to create agent payment order",
+      error: process.env.NODE_ENV === "development" ? razorpayMessage : undefined,
+    });
   }
 };
 
 const confirmAgentPaymentDynamic = async (req, res) => {
-  const session = await mongoose.startSession();
+  // const session = await mongoose.startSession();
+  let session = null;
   try {
     const {
       razorpay_order_id,
@@ -1538,55 +1644,104 @@ const confirmAgentPaymentDynamic = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid payment signature" });
     }
 
-    session.startTransaction();
+    if (!mongoose.Types.ObjectId.isValid(agentId)) {
+      return res.status(400).json({ success: false, message: "Invalid agent id" });
+    }
 
-    const agent = await agentModel.findById(agentId).session(session);
+    const isMockPayment =
+      String(razorpay_payment_id || "").startsWith("pay_mock_") ||
+      razorpay_signature === "mock_signature_success";
+
+    session = await startOptionalSession();
+
+    const agent = await applySession(agentModel.findById(agentId), session);
     if (!agent) {
-      await session.abortTransaction();
-      session.endSession();
+      await abortOptionalSession(session);
       return res.status(404).json({ success: false, message: "Agent not found" });
     }
     if (agent.isPaid) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({ success: false, message: "Agent is already paid" });
+      await abortOptionalSession(session);
+      return res.status(200).json({
+        success: true,
+        message: "Agent is already a paid agent",
+        mockPayment: isMockPayment,
+        data: agent,
+      });
+    }
+
+    const existingTxn = await applySession(
+      Transaction.findOne({ transactionId: razorpay_payment_id }),
+      session,
+    );
+
+    if (existingTxn) {
+      agent.isPaid = true;
+      await agent.save(saveOptions(session));
+      await commitOptionalSession(session);
+      return res.status(200).json({
+        success: true,
+        message: "Agent payment already confirmed",
+        mockPayment: isMockPayment,
+        data: agent,
+      });
     }
 
     agent.isPaid = true;
-    await agent.save({ session });
-
-    // const payment = await razorpay.payments.fetch(razorpay_payment_id);
-    const payment = { method: "upi", amount: 100000 }; // 1000 INR default in cents
+    await agent.save(saveOptions(session));
 
     const distributor = agent.createdBy
-      ? await userModel.findById(agent.createdBy).session(session)
+      ? await applySession(userModel.findById(agent.createdBy), session)
       : null;
+
+    let paymentAmount = Number(req.body.amount) || 0;
+    if (!isMockPayment) {
+      try {
+        const fetched = await razorpay.payments.fetch(razorpay_payment_id);
+        if (fetched?.amount) {
+          paymentAmount = fetched.amount / 100;
+        }
+      } catch {
+        // fall back to request amount
+      }
+    }
+
+    if (paymentAmount <= 0) {
+      await abortOptionalSession(session);
+      return res.status(400).json({ success: false, message: "Unable to determine payment amount" });
+    }
 
     await Transaction.create([{
       userId: agent.userId,
-      amount: payment.amount / 100,
+      amount: paymentAmount,
       type: "Debit",
       category: "Subscription",
       status: "Completed",
-      description: `Agent paid subscription fee (Dynamic - Distributor: ${distributor ? distributor.firstName + ' ' + distributor.lastName : 'N/A'})`,
+      description: isMockPayment
+        ? `Agent paid subscription fee (mock payment - Distributor: ${distributor ? distributor.firstName + ' ' + distributor.lastName : 'N/A'})`
+        : `Agent paid subscription fee (Dynamic - Distributor: ${distributor ? distributor.firstName + ' ' + distributor.lastName : 'N/A'})`,
       transactionId: razorpay_payment_id,
       distributorId: distributor ? distributor._id : undefined,
       createdBy: agent.userId,
-    }], { session });
+    }], saveOptions(session));
 
-    await session.commitTransaction();
-    session.endSession();
+    await commitOptionalSession(session);
 
     res.status(200).json({
       success: true,
-      message: "Agent payment confirmed and marked as paid (dynamic pricing)",
+      message: isMockPayment
+        ? "Mock agent payment confirmed and marked as paid (dynamic pricing)"
+        : "Agent payment confirmed and marked as paid (dynamic pricing)",
+      mockPayment: isMockPayment,
       data: agent,
     });
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
+    await abortOptionalSession(session);
     console.error("Error confirming dynamic agent payment:", error);
-    res.status(500).json({ success: false, message: "Failed to confirm agent payment" });
+    res.status(500).json({
+      success: false,
+      message: "Failed to confirm agent payment",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
   }
 };
 

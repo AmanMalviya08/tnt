@@ -63,6 +63,18 @@ async function notifyUser(userId, payload = {}) {
   return { success: true, push, tokenCount: tokens.length };
 }
 
+async function notifyAdmins(payload = {}) {
+  const admins = await userModel
+    .find({ role: { $in: ["Admin", "SubAdmin"] }, isDisabled: { $ne: true } })
+    .select("_id")
+    .lean();
+
+  const results = await Promise.allSettled(
+    admins.map((admin) => notifyUser(admin._id, payload))
+  );
+  return { notified: results.filter((r) => r.status === "fulfilled").length };
+}
+
 function formatInr(amount) {
   return `₹${Number(amount || 0).toLocaleString("en-IN")}`;
 }
@@ -80,6 +92,7 @@ function formatTravelDate(dateValue) {
 
 module.exports = {
   notifyUser,
+  notifyAdmins,
   getActiveTokens,
   formatInr,
   formatTravelDate,

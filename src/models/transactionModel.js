@@ -82,6 +82,14 @@ const transactionSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
         },
+        statusHistory: [
+            {
+                status: { type: String },
+                changedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+                note: { type: String, trim: true },
+                changedAt: { type: Date, default: Date.now },
+            },
+        ],
     },
     { timestamps: true }
 );

@@ -17,16 +17,19 @@ class TourStatusController {
         });
       }
 
+      const { tourId } = req.params;
+      const tourIdFromBody = req.body?.tourId;
+      const resolvedTourId = tourId || tourIdFromBody;
+
       if (req.user.role === "Guide") {
         const guideTourLocationService = require("../services/guideTourLocationService");
         await guideTourLocationService.assertGuideCanTrackTour(
           req.user.userId,
-          tourId,
+          resolvedTourId,
           req.user.role
         );
       }
 
-      const { tourId } = req.params;
       const { statusCode, lat, lng, note, timestamp } = req.body || {};
 
       if (!statusCode || !isValidTourStatusCode(statusCode)) {
@@ -37,7 +40,7 @@ class TourStatusController {
       }
 
       const data = await tourStatusService.updateTourStatus({
-        tourId,
+        tourId: resolvedTourId,
         statusCode,
         lat,
         lng,

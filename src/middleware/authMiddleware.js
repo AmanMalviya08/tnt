@@ -232,6 +232,33 @@ const routePermissions = [
 
     { path: '/api/about/', method: 'PUT', roles: ['Admin', 'SubAdmin'], exact: true },
 
+    // leads (company agents only — enforced further by agentTypeMiddleware)
+    { path: '/api/leads/', method: 'GET', roles: ['Agent', 'Admin', 'SubAdmin'], exact: true },
+    { path: '/api/leads/', method: 'POST', roles: ['Agent', 'Admin', 'SubAdmin'], exact: true },
+    { path: '/api/leads/meta/enums', method: 'GET', roles: ['Agent', 'Admin', 'SubAdmin'], exact: true },
+    { path: '/api/leads/:id', method: 'GET', roles: ['Agent', 'Admin', 'SubAdmin'] },
+    { path: '/api/leads/:id', method: 'PUT', roles: ['Agent', 'Admin', 'SubAdmin'] },
+    { path: '/api/leads/export-leads/excel', method: 'GET', roles: ['Admin', 'SubAdmin'], exact: true },
+    { path: '/api/leads/:id', method: 'DELETE', roles: ['Admin', 'SubAdmin'] },
+
+    // guide tour operations
+    { path: '/api/guide-ops/attendance/:allocationId', method: 'POST', roles: ['Guide', 'Admin', 'SubAdmin'] },
+    { path: '/api/guide-ops/attendance/:allocationId', method: 'GET', roles: ['Guide', 'Admin', 'SubAdmin'] },
+    { path: '/api/guide-ops/broadcast', method: 'POST', roles: ['Guide', 'Admin', 'SubAdmin'], exact: true },
+    { path: '/api/guide-ops/broadcast/:tourId', method: 'GET', roles: ['Guide', 'Admin', 'SubAdmin'] },
+    { path: '/api/guide-ops/expenses', method: 'POST', roles: ['Guide'], exact: true },
+    { path: '/api/guide-ops/expenses/my', method: 'GET', roles: ['Guide'], exact: true },
+    { path: '/api/guide-ops/expenses/pending', method: 'GET', roles: ['Admin', 'SubAdmin'], exact: true },
+    { path: '/api/guide-ops/expenses/:id/review', method: 'PATCH', roles: ['Admin', 'SubAdmin'] },
+    { path: '/api/guide-ops/expenses/export/csv', method: 'GET', roles: ['Guide'], exact: true },
+    { path: '/api/guide-ops/missing-alert', method: 'POST', roles: ['Guide'], exact: true },
+    { path: '/api/guide-ops/temple-checkin', method: 'POST', roles: ['Guide'], exact: true },
+    { path: '/api/guide-ops/home-alerts', method: 'GET', roles: ['Agent'], exact: true },
+    { path: '/api/guide-ops/certificate', method: 'GET', roles: ['Agent'], exact: true },
+    { path: '/api/guide-ops/transactions/export', method: 'GET', roles: ['Agent'], exact: true },
+    { path: '/api/admin/analytics/export', method: 'GET', roles: ['Admin', 'SubAdmin'], exact: true },
+    { path: '/api/admin/commission-report', method: 'GET', roles: ['Admin', 'SubAdmin'], exact: true },
+
 ]
 
 

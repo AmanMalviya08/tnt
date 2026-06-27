@@ -159,10 +159,42 @@ const agentSchema = new mongoose.Schema(
     isPaid: {
       type: Boolean,
       default: false
-    }
+    },
+    agentType: {
+      type: String,
+      enum: ["company", "external"],
+      default: "company",
+    },
+    referralCode: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      unique: true,
+      sparse: true,
+    },
   },
   { timestamps: true }
 );
+
+agentSchema.pre("save", async function generateReferralCode(next) {
+  if (this.referralCode) return next();
+  const base = [this.firstName, this.lastName].filter(Boolean).join("") || "AGENT";
+  const suffix = (this.userId || this._id || Date.now()).toString().slice(-6).toUpperCase();
+  let candidate = `${base.slice(0, 4).toUpperCase()}${suffix}`.replace(/[^A-Z0-9]/g, "");
+  if (candidate.length < 6) candidate = `AG${suffix}`;
+  let attempt = 0;
+  while (attempt < 5) {
+    const exists = await agentModel.findOne({ referralCode: candidate, _id: { $ne: this._id } });
+    if (!exists) {
+      this.referralCode = candidate;
+      return next();
+    }
+    candidate = `${candidate.slice(0, 6)}${attempt + 1}`;
+    attempt += 1;
+  }
+  this.referralCode = `AG${Date.now().toString(36).toUpperCase()}`;
+  next();
+});
 
 agentSchema.virtual("fullName").get(function () {
   return [this.firstName, this.lastName].filter(Boolean).join(" ");
