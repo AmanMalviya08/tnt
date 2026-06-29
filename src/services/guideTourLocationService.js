@@ -2,10 +2,68 @@
 
 const Guide = require("../models/guideModel");
 const { tourModel } = require("../models/tourModel");
-const { guideAllocationModel } = require("../models/guideAllocationModel");
+const { bookingModel } = require("../models/bookingModel");
+const {
+  guideAllocationModel,
+  trackableAllocationStatuses,
+} = require("../models/guideAllocationModel");
 const { updateLiveTracking } = require("./tourShareService");
 const { tourShareLinkModel } = require("../models/tourShareLinkModel");
-const { emitTourTrackingUpdate } = require("./socketService");
+const { emitTourTrackingUpdate, emitGuideTrackingUpdate } = require("./socketService");
+const { resolveGuideIdForTour } = require("./guideUsersTrackingService");
+
+async function guideHasAllocationForTour(guideId, tourId) {
+  const direct = await guideAllocationModel.exists({
+    tourId,
+    guideId,
+    isDisabled: { $ne: true },
+    status: { $in: trackableAllocationStatuses },
+  });
+  if (direct) return true;
+
+  const bookings = await bookingModel
+    .find({ selectedTourId: tourId })
+    .select("_id")
+    .lean();
+
+  if (bookings.length) {
+    const viaBooking = await guideAllocationModel.exists({
+      bookingId: { $in: bookings.map((b) => b._id) },
+      guideId,
+      isDisabled: { $ne: true },
+      status: { $in: trackableAllocationStatuses },
+    });
+    if (viaBooking) return true;
+  }
+
+  const allocations = await guideAllocationModel
+    .find({
+      guideId,
+      isDisabled: { $ne: true },
+      status: { $in: trackableAllocationStatuses },
+    })
+    .select("tourId bookingId")
+    .lean();
+
+  for (const alloc of allocations) {
+    if (alloc.tourId && String(alloc.tourId) === String(tourId)) return true;
+
+    if (alloc.bookingId) {
+      const booking = await bookingModel
+        .findById(alloc.bookingId)
+        .select("selectedTourId")
+        .lean();
+      if (
+        booking?.selectedTourId &&
+        String(booking.selectedTourId) === String(tourId)
+      ) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
 
 async function assertGuideCanTrackTour(userId, tourId, userRole) {
   if (["Admin", "SubAdmin"].includes(userRole)) {
@@ -26,17 +84,17 @@ async function assertGuideCanTrackTour(userId, tourId, userRole) {
     throw new Error("Tour not found");
   }
 
-  const allocated = await guideAllocationModel.exists({
-    tourId,
-    guideId: guide._id,
-    status: { $in: ["Assigned", "Active", "In Progress", "Confirmed"] },
-  });
+  const allocated = await guideHasAllocationForTour(guide._id, tourId);
 
   const isTourGuide =
     tour.guideId && String(tour.guideId) === String(guide._id);
 
   if (!allocated && !isTourGuide) {
     throw new Error("You are not assigned to this tour");
+  }
+
+  if (!tour.guideId) {
+    await tourModel.findByIdAndUpdate(tourId, { guideId: guide._id });
   }
 
   return true;
@@ -52,7 +110,12 @@ async function updateGuideTourLocation(userId, userRole, tourId, payload = {}) {
   }
 
   const trackingPayload = {
-    currentLocation: { lat: Number(lat), lng: Number(lng) },
+    currentLocation: {
+      lat: Number(lat),
+      lng: Number(lng),
+      latitude: Number(lat),
+      longitude: Number(lng),
+    },
     eta: eta || null,
     routeProgress: routeProgress ?? undefined,
     vehicleStatus: vehicleStatus || "moving",
@@ -82,6 +145,15 @@ async function updateGuideTourLocation(userId, userRole, tourId, payload = {}) {
     emitTourTrackingUpdate(link.shareToken, socketPayload);
   }
 
+  const guideId = await resolveGuideIdForTour(tourId);
+  if (guideId) {
+    emitGuideTrackingUpdate(guideId, {
+      type: "location-update",
+      guideId,
+      ...socketPayload,
+    });
+  }
+
   return {
     tourId,
     tracking,
@@ -92,4 +164,5 @@ async function updateGuideTourLocation(userId, userRole, tourId, payload = {}) {
 module.exports = {
   updateGuideTourLocation,
   assertGuideCanTrackTour,
+  guideHasAllocationForTour,
 };

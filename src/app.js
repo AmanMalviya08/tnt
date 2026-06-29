@@ -72,6 +72,7 @@ app.use("/api/countries", countryRoutes);
 app.use("/api/places", placeRoutes);
 app.use("/api/packages", packageRoutes);
 app.use("/api/tours", tourRoutes);
+app.use("/api/tours", require("./routes/userTourLocationRoutes"));
 app.use("/api/uploads", uploadRoutes);
 app.use("/api/blogs", blogRoutes);
 app.use("/api/bookings", bookingRoutes);

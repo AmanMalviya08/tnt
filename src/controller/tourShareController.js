@@ -27,7 +27,10 @@ class TourShareController {
         data,
       });
     } catch (error) {
-      const status = error.message.includes("expired") ? 410 : 404;
+      const isExpired =
+        error.message === "Share link has expired" ||
+        error.message.includes("Tour has ended");
+      const status = isExpired ? 410 : 404;
       res.status(status).json({ success: false, message: error.message });
     }
   }

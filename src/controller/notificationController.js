@@ -30,7 +30,7 @@ function parseTargetFilter(target = "all", role) {
 exports.registerDeviceToken = async (req, res) => {
   try {
     const userId = req.user?.userId;
-    const { token, platform, appVersion, deviceId } = req.body || {};
+    const { token, platform, appVersion, deviceId, uniqueId } = req.body || {};
     if (!userId) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
@@ -43,12 +43,14 @@ exports.registerDeviceToken = async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
+    const resolvedDeviceId = String(deviceId || uniqueId || "").trim();
+
     const existingIndex = (user.fcmTokens || []).findIndex((item) => item.token === token);
     const payload = {
       token,
       platform: platform || "android",
       appVersion: appVersion || "",
-      deviceId: deviceId || "",
+      deviceId: resolvedDeviceId,
       isActive: true,
       lastUsedAt: new Date(),
     };

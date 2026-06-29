@@ -1,10 +1,23 @@
-// FEATURE: Guide Live Location | Added: 2026-06-26 | Status: NEW
+// FEATURE: Guide Live Location + Users Tracking | Added: 2026-06-26/29
 
 const express = require("express");
 const { protect } = require("../middleware/authMiddleware");
 const guideTourLocationService = require("../services/guideTourLocationService");
+const guideTrackingController = require("../controller/guideTrackingController");
 
 const router = express.Router();
+
+router.get("/tracking/users", protect, (req, res) =>
+  guideTrackingController.getAllGuidesUsersTracking(req, res)
+);
+
+router.get("/tracking/me/users", protect, (req, res) =>
+  guideTrackingController.getMyGuideUsersTracking(req, res)
+);
+
+router.get("/tracking/:guideId/users", protect, (req, res) =>
+  guideTrackingController.getGuideUsersTracking(req, res)
+);
 
 router.post("/tours/:tourId/location", protect, async (req, res) => {
   try {

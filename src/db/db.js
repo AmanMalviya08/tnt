@@ -5,8 +5,14 @@ const companyModel = require("../models/companyModel");
 const companyController = new CompanyController(companyModel);
 
 async function connectDB() {
+  const mongoUrl = process.env.MONGODB_URL?.trim();
+  if (!mongoUrl) {
+    console.error("❌ MONGODB_URL is not set in .env");
+    process.exit(1);
+  }
+
   try {
-    await mongoose.connect(process.env.MONGODB_URL, {
+    await mongoose.connect(mongoUrl, {
       maxPoolSize: 10,
       minPoolSize: 2,
       socketTimeoutMS: 60000,

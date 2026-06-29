@@ -204,7 +204,11 @@ const routePermissions = [
     { path: '/api/user/saved-travellers/:id', method: 'DELETE', roles: ['Traveler'] },
 
     // tour live status
+    { path: '/api/tours/:tourId/user-location', method: 'POST', roles: ['Traveler'] },
     { path: '/api/guide/tours/:tourId/location', method: 'POST', roles: ['Admin', 'SubAdmin', 'Guide'] },
+    { path: '/api/guide/tracking/users', method: 'GET', roles: ['Admin', 'SubAdmin'], exact: true },
+    { path: '/api/guide/tracking/me/users', method: 'GET', roles: ['Guide'], exact: true },
+    { path: '/api/guide/tracking/:guideId/users', method: 'GET', roles: ['Admin', 'SubAdmin', 'Guide'] },
     { path: '/api/tour-status/update', method: 'POST', roles: ['Admin', 'SubAdmin', 'Guide'], exact: true },
     { path: '/api/tour-status/update/:tourId', method: 'POST', roles: ['Admin', 'SubAdmin', 'Guide'] },
     { path: '/api/tour-status/:tourId/my-status', method: 'GET', roles: ['Traveler', 'Agent', 'Admin', 'SubAdmin', 'Guide'] },

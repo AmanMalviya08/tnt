@@ -1,6 +1,8 @@
 const mongoose = require("mongoose");
 
 const assignmentStatuses = ["Pending", "Active", "Paused", "Completed", "Cancelled"];
+/** Allocations that allow guide GPS updates (must match DB enum + app flows). */
+const trackableAllocationStatuses = ["Pending", "Active", "Paused"];
 const assignmentTypes = ["Tour", "Booking"];
 
 const transferSchema = new mongoose.Schema(
@@ -171,5 +173,6 @@ const guideAllocationModel = mongoose.model("GuideAllocation", guideAllocationSc
 module.exports = {
   guideAllocationModel,
   assignmentStatuses,
+  trackableAllocationStatuses,
   assignmentTypes,
 };

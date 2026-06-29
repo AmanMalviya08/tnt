@@ -192,6 +192,31 @@ class GuideAllocationController {
       });
     }
 
+    if (allocation?.guideId) {
+      const { tourModel } = require("../models/tourModel");
+      let resolvedTourId = allocation.tourId;
+
+      if (!resolvedTourId && allocation.bookingId) {
+        const booking = await bookingModel
+          .findById(allocation.bookingId)
+          .select("selectedTourId")
+          .lean();
+        resolvedTourId = booking?.selectedTourId || null;
+      }
+
+      if (resolvedTourId) {
+        await tourModel.findByIdAndUpdate(resolvedTourId, {
+          guideId: allocation.guideId,
+        });
+
+        if (!allocation.tourId) {
+          await this.model.findByIdAndUpdate(allocation._id, {
+            tourId: resolvedTourId,
+          });
+        }
+      }
+    }
+
     console.log(allocation);
     return allocation;
   }
@@ -919,6 +944,21 @@ class GuideAllocationController {
       allocation.notes = transferPayload.notes;
     }
     await allocation.save();
+
+    const { tourModel } = require("../models/tourModel");
+    let resolvedTourId = allocation.tourId;
+    if (!resolvedTourId && allocation.bookingId) {
+      const booking = await bookingModel
+        .findById(allocation.bookingId)
+        .select("selectedTourId")
+        .lean();
+      resolvedTourId = booking?.selectedTourId || null;
+    }
+    if (resolvedTourId && transferPayload.toGuideId) {
+      await tourModel.findByIdAndUpdate(resolvedTourId, {
+        guideId: transferPayload.toGuideId,
+      });
+    }
 
     // Populate the new guide's details, tour/package, and booking (with selected package) for email
     allocation = await allocation.populate([

@@ -40,7 +40,7 @@ async function createShareLink(tourId, userId) {
 
 function formatShareResponse(link, tour) {
   const deepLink = `${APP_DEEP_LINK_BASE}/${link.shareToken}`;
-  const webLink = `${process.env.API_PUBLIC_URL || "https://api.zunjarraoyatra.com"}/api/tour-share/public/${link.shareToken}`;
+  const webLink = `${APP_DEEP_LINK_BASE}/${link.shareToken}`;
 
   return {
     shareToken: link.shareToken,
@@ -132,20 +132,43 @@ async function getPublicTrackingData(shareToken) {
 }
 
 async function updateLiveTracking(tourId, payload) {
+  const loc = payload.currentLocation || {};
+  const lat = loc.lat ?? loc.latitude;
+  const lng = loc.lng ?? loc.longitude;
+  const normalizedLocation =
+    lat != null && lng != null
+      ? {
+          lat: Number(lat),
+          lng: Number(lng),
+          latitude: Number(lat),
+          longitude: Number(lng),
+          address: loc.address || "",
+        }
+      : null;
+
+  const $set = {
+    "liveTracking.lastUpdated": new Date(),
+  };
+
+  if (normalizedLocation) {
+    $set["liveTracking.currentLocation"] = normalizedLocation;
+  }
+  if (payload.eta !== undefined) {
+    $set["liveTracking.eta"] = payload.eta;
+  }
+  if (payload.routeProgress !== undefined) {
+    $set["liveTracking.routeProgress"] = payload.routeProgress;
+  }
+  if (payload.vehicleStatus) {
+    $set["liveTracking.vehicleStatus"] = payload.vehicleStatus;
+  }
+  if (Array.isArray(payload.route) && payload.route.length) {
+    $set["liveTracking.route"] = payload.route;
+  }
+
   const tour = await tourModel.findByIdAndUpdate(
     tourId,
-    {
-      $set: {
-        liveTracking: {
-          currentLocation: payload.currentLocation,
-          eta: payload.eta,
-          routeProgress: payload.routeProgress,
-          vehicleStatus: payload.vehicleStatus || "moving",
-          route: payload.route || [],
-          lastUpdated: new Date(),
-        },
-      },
-    },
+    { $set },
     { new: true }
   );
 

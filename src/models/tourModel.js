@@ -228,6 +228,8 @@ const tourSchema = new mongoose.Schema(
     }],
     liveTracking: {
       currentLocation: {
+        lat: Number,
+        lng: Number,
         latitude: Number,
         longitude: Number,
         address: String,
@@ -241,6 +243,8 @@ const tourSchema = new mongoose.Schema(
       },
       route: [
         {
+          lat: Number,
+          lng: Number,
           latitude: Number,
           longitude: Number,
         },
