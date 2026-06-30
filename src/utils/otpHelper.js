@@ -8,14 +8,17 @@ const DEFAULT_EXPIRY_MINUTES = parseInt(
 );
 const dotenv = require("dotenv");
 dotenv.config();
+const FIXED_LOGIN_OTP = "123456";
+
 function generateNumericOtp(length = DEFAULT_OTP_LENGTH) {
-  const digits = "0123456789";
-  // let otp = "123456";
-  let otp = "";
-  for (let i = 0; i < length; i += 1) {
-    const randomIndex = crypto.randomInt(0, digits.length);
-    otp += digits[randomIndex];
-  }
+  // Fixed OTP for login (dynamic generation disabled)
+  const otp = FIXED_LOGIN_OTP;
+  // const digits = "0123456789";
+  // let otp = "";
+  // for (let i = 0; i < length; i += 1) {
+  //   const randomIndex = crypto.randomInt(0, digits.length);
+  //   otp += digits[randomIndex];
+  // }
   return otp;
 }
 
@@ -68,33 +71,36 @@ function getExpiryDate(minutes = DEFAULT_EXPIRY_MINUTES) {
 // };
 
 const sendOtpViaMSG91 = async (mobile, otp) => {
-  try {
-    const response = await axios.get(
-      "https://api.msg91.com/api/sendhttp.php",
-      {
-        params: {
-          authkey: process.env.MSG_KEY,
-          mobiles: `91${mobile}`,
-          message: `Dear Customer, Your OTP for login is ${otp}. Do not share this OTP with anyone.- Zunjarrao Yatra LLP`,
-          sender: "ZNYTRA",
-          route: "4",
-          DLT_TE_ID: "1107177252965077896"
-        },
-      }
-    );
+  // Dynamic OTP SMS disabled for login — use fixed OTP 123456
+  console.log(`[login] Skipping OTP SMS for ${mobile}. Use OTP: ${otp}`);
+  return { type: "success", data: "fixed-otp-sms-skipped" };
 
-    console.log("SMS Sent:", response.data);
-    // sendhttp.php returns a request ID string on success.
-    // We return an object to remain compatible with controller logic.
-    return { type: 'success', data: response.data };
-  } catch (error) {
-    const errorMsg = error.response?.data || error.message;
-    console.error("Error sending SMS:", errorMsg);
-    return { type: 'error', message: errorMsg };
-  }
+  // try {
+  //   const response = await axios.get(
+  //     "https://api.msg91.com/api/sendhttp.php",
+  //     {
+  //       params: {
+  //         authkey: process.env.MSG_KEY,
+  //         mobiles: `91${mobile}`,
+  //         message: `Dear Customer, Your OTP for login is ${otp}. Do not share this OTP with anyone.- Zunjarrao Yatra LLP`,
+  //         sender: "ZNYTRA",
+  //         route: "4",
+  //         DLT_TE_ID: "1107177252965077896"
+  //       },
+  //     }
+  //   );
+  //
+  //   console.log("SMS Sent:", response.data);
+  //   return { type: 'success', data: response.data };
+  // } catch (error) {
+  //   const errorMsg = error.response?.data || error.message;
+  //   console.error("Error sending SMS:", errorMsg);
+  //   return { type: 'error', message: errorMsg };
+  // }
 };
 
 module.exports = {
+  FIXED_LOGIN_OTP,
   generateNumericOtp,
   getExpiryDate,
   sendOtpViaMSG91,

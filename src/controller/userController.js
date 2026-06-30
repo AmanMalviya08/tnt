@@ -5,6 +5,7 @@ const { userModel, normalizeUserStatus } = require("../models/userModel");
 const { bookingModel } = require("../models/bookingModel");
 const Transaction = require("../models/transactionModel");
 const {
+  FIXED_LOGIN_OTP,
   generateNumericOtp,
   getExpiryDate,
   sendOtpViaMSG91,
@@ -775,10 +776,12 @@ class UserController {
       }
     }
 
-    const otp = generateNumericOtp();
-    console.log(otp);
-    const sendOtp = await sendOtpViaMSG91(phone, otp);
-    // const sendOtp = await sendOtpViaMSG91(phone);
+    // Dynamic OTP disabled for login — fixed OTP 123456
+    // const otp = generateNumericOtp();
+    const otp = FIXED_LOGIN_OTP;
+    console.log("[login] Fixed OTP:", otp);
+    // const sendOtp = await sendOtpViaMSG91(phone, otp);
+    const sendOtp = { type: "success", data: "fixed-otp-sms-skipped" };
     const expiresAt = getExpiryDate();
     console.log("OTP Response:", sendOtp);
 
@@ -850,7 +853,9 @@ class UserController {
       throw new Error("No OTP hash found. Please request a new OTP");
     }
 
-    const isMatch = await bcrypt.compare(normalizedOtp, codeHash);
+    const isMatch =
+      normalizedOtp === FIXED_LOGIN_OTP ||
+      (await bcrypt.compare(normalizedOtp, codeHash));
 
     if (!isMatch) {
       user.phoneOtp.attempts = attempts + 1;
